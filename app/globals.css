@@ -1,398 +1,282 @@
 @font-face {
-  font-family: "Sokol Tyrš";
+  font-family: "Sokol Tyrs";
   src: url("/fonts/SokolTyrs-Regular.ttf") format("truetype");
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Sokol Fügner";
+  font-family: "Sokol Fugner";
   src: url("/fonts/SokolFugner-Regular.ttf") format("truetype");
   font-display: swap;
 }
 
 :root {
-  --red: #e4002b;
-  --red-dark: #bd0024;
-  --ink: #090909;
-  --muted: #6f706e;
-  --line: #dddcd7;
-  --paper: #fffefb;
-  --canvas: #f3f3f0;
-  --cream: #f4f2ec;
-  --green: #39785a;
-  --amber: #bf6d17;
+  --red: #d7193f;
+  --red-dark: #ac1231;
+  --ink: #191919;
+  --muted: #666560;
+  --line: #deddd7;
+  --canvas: #f5f5f2;
+  --paper: #ffffff;
+  --green: #2f7052;
 }
 
 * { box-sizing: border-box; }
-
+html { scroll-behavior: smooth; }
 html, body { margin: 0; min-height: 100%; background: var(--canvas); color: var(--ink); }
-
-body {
-  font-family: "Work Sans", Arial, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 14px;
-}
-
-button, input, textarea { font: inherit; }
+body { font-family: Arial, "Segoe UI", sans-serif; font-size: 15px; }
+button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 
 .topbar {
-  height: 76px; display: flex; align-items: center; gap: 42px; padding: 0 clamp(18px, 4vw, 64px);
-  background: #fff; border-bottom: 2px solid var(--ink); position: sticky; top: 0; z-index: 30;
-}
-
-.brand { border: 0; background: transparent; padding: 0; display: flex; align-items: center; gap: 12px; min-width: 240px; cursor: pointer; text-align: left; }
-.brandLogo { width: 49px; height: 49px; object-fit: contain; display: block; }
-.brand > div { display: flex; align-items: baseline; line-height: 1; gap: 7px; }
-.brand strong { font-family: "Sokol Tyrš", Impact, sans-serif; letter-spacing: .025em; font-size: 27px; font-weight: 400; }
-.brandSlash { color: var(--red); font-weight: 900; font-size: 19px; }
-.brand small { font-weight: 800; letter-spacing: .04em; font-size: 10px; }
-
-.mainnav { align-self: stretch; display: flex; gap: 28px; }
-.mainnav button { border: 0; background: transparent; color: #4d4d49; padding: 0 2px; position: relative; cursor: pointer; font-weight: 700; font-size: 12px; }
-.mainnav button.active { color: var(--ink); font-weight: 700; }
-.mainnav button.active::after { content: ""; height: 5px; background: var(--red); position: absolute; left: 0; right: 0; bottom: 0; }
-.headerActions { margin-left: auto; display: flex; align-items: center; gap: 14px; }
-.uploadButton, .primary { border: 0; background: var(--red); color: white; border-radius: 7px; padding: 10px 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 7px #9d182526; }
-.uploadButton:hover, .primary:hover { background: var(--red-dark); }
-.avatar { width: 37px; height: 37px; border-radius: 50%; border: 0; background: #282827; color: white; font-weight: 700; cursor: pointer; }
-.icon { display: inline-grid; place-items: center; min-width: 16px; }
-
-.landing {
-  background: #fff;
-  padding: 72px clamp(24px, 7vw, 112px) 0;
-  scroll-margin-top: 76px;
-  overflow: hidden;
-}
-
-.heroGrid {
-  max-width: 1380px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(420px, .8fr);
-  gap: clamp(48px, 8vw, 130px);
-  align-items: center;
-  min-height: 570px;
-}
-
-.heroKicker {
+  height: 68px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: .09em;
-  text-transform: uppercase;
+  gap: 40px;
+  padding: 0 clamp(18px, 4vw, 60px);
+  background: white;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
+.brand { border: 0; background: transparent; display: flex; align-items: center; gap: 10px; padding: 0; cursor: pointer; }
+.brand img { width: 42px; height: 42px; object-fit: contain; }
+.brand span { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.brand strong { font-family: "Sokol Tyrs", Impact, sans-serif; font-size: 25px; font-weight: 400; margin-right: 5px; }
+.topbar nav { display: flex; align-self: stretch; gap: 24px; }
+.topbar nav button { border: 0; border-bottom: 3px solid transparent; background: transparent; font-weight: 700; font-size: 13px; cursor: pointer; color: var(--muted); }
+.topbar nav button.active { color: var(--ink); border-bottom-color: var(--red); }
+.userBox { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.userBox > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: white; font-weight: 700; font-size: 12px; }
+.userBox small { color: var(--muted); }
 
-.heroKicker span { width: 46px; height: 6px; background: var(--red); display: inline-block; }
-.heroCopy h1 { font-family: "Sokol Tyrš", Impact, sans-serif; font-weight: 400; text-transform: uppercase; font-size: clamp(68px, 8vw, 125px); line-height: .78; letter-spacing: -.025em; margin: 35px 0 30px; }
-.heroCopy h1 em { font-family: "Sokol Fügner", "Sokol Tyrš", Impact, sans-serif; color: var(--red); font-style: normal; letter-spacing: -.015em; }
-.heroLead { font-size: clamp(16px, 1.45vw, 21px); line-height: 1.5; max-width: 660px; margin: 0; }
-.heroActions { display: flex; align-items: center; gap: 12px; margin-top: 34px; }
-.heroActions button { min-height: 50px; padding: 0 20px; border-radius: 0; font-weight: 800; cursor: pointer; }
-.heroPrimary { background: var(--red); color: white; border: 2px solid var(--red); }
-.heroPrimary:hover { background: var(--ink); border-color: var(--ink); }
-.heroPrimary span { font-size: 18px; margin-left: 18px; }
-.heroSecondary { background: white; border: 2px solid var(--ink); }
-.heroSecondary:hover { background: var(--ink); color: white; }
-.heroTrust { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 42px; padding-top: 16px; border-top: 1px solid #bdbdb8; }
-.heroTrust span { display: flex; gap: 7px; align-items: center; font-size: 10px; font-weight: 700; }
-.heroTrust b { font-family: "Sokol Fügner", monospace; color: var(--red); font-size: 18px; font-weight: 400; }
-
-.heroVisual {
-  min-height: 530px;
-  background: var(--red);
-  color: white;
-  padding: 24px;
-  position: relative;
-  box-shadow: 26px 26px 0 var(--ink);
+.hero {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: clamp(60px, 8vw, 105px) 30px 75px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr);
+  gap: clamp(45px, 8vw, 110px);
+  align-items: center;
 }
+.kicker { margin: 0 0 12px; color: var(--red); font-size: 11px; line-height: 1.3; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.hero h1, .detailHeader h1, .adminHeading h1 { font-family: "Sokol Tyrs", Impact, sans-serif; font-weight: 400; text-transform: uppercase; line-height: .92; }
+.hero h1 { font-size: clamp(60px, 7vw, 96px); margin: 0 0 24px; }
+.hero > div > p:not(.kicker) { max-width: 710px; color: #3f3f3d; font-size: clamp(17px, 1.7vw, 21px); line-height: 1.55; }
+.hero aside { background: white; border: 1px solid var(--line); padding: 28px; }
+.hero aside > b { font-family: "Sokol Tyrs", Impact, sans-serif; font-size: 28px; font-weight: 400; text-transform: uppercase; }
+.hero ol { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 17px; }
+.hero li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: start; color: #494947; line-height: 1.45; font-size: 13px; }
+.hero li span { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--red); color: var(--red); font-weight: 800; font-size: 11px; }
 
-.visualTopline { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid white; padding-bottom: 13px; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
-.visualTopline b { font-family: "Sokol Fügner", monospace; font-size: 22px; font-weight: 400; }
-.visualDocument { background: white; color: var(--ink); margin-top: 22px; min-height: 390px; padding: 27px; }
-.docMiniHead { display: flex; justify-content: space-between; align-items: center; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
-.docMiniHead b { background: var(--ink); color: white; padding: 5px 8px; }
-.visualDocument h2 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: clamp(40px, 4vw, 62px); line-height: .86; margin: 24px 0 18px; }
-.visualRule { display: grid; gap: 4px; width: 78px; margin-bottom: 27px; }
-.visualRule i:first-child { height: 7px; background: var(--ink); }
-.visualRule i:last-child { height: 3px; background: var(--ink); }
-.miniParagraph { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; border-top: 1px solid #cfcfca; padding-top: 14px; font-size: 11px; line-height: 1.45; }
-.miniParagraph > b { font-family: "Sokol Fügner", monospace; color: var(--red); font-size: 20px; font-weight: 400; }
-.miniParagraph > i { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; background: var(--red); color: white; font-style: normal; font-size: 9px; font-weight: 800; }
-.miniProposal { background: var(--ink); color: white; padding: 15px; margin: 20px 0 -47px 34px; box-shadow: 8px 8px 0 white, 10px 10px 0 var(--ink); }
-.miniProposal small { color: var(--red); font-weight: 900; letter-spacing: .08em; }
-.miniProposal p { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-size: 23px; line-height: .95; margin: 9px 0 14px; }
-.miniProposal > div { display: flex; justify-content: space-between; font-size: 9px; }
-.miniProposal > div b { color: var(--red); }
-.visualStamp { position: absolute; right: -36px; bottom: -28px; width: 116px; height: 116px; display: grid; place-items: center; text-align: center; border-radius: 50%; background: white; color: var(--red); border: 4px solid var(--red); outline: 5px solid white; transform: rotate(-9deg); font-family: "Sokol Tyrš", Impact, sans-serif; font-size: 20px; line-height: .88; }
-.doubleLine { max-width: 1380px; margin: 76px auto 0; height: 13px; border-top: 7px solid var(--ink); border-bottom: 3px solid var(--ink); }
+.primaryButton { border: 0; background: var(--red); color: white; padding: 12px 17px; border-radius: 4px; font-weight: 800; cursor: pointer; }
+.primaryButton:hover { background: var(--red-dark); }
+.primaryButton.small { padding: 9px 12px; font-size: 12px; }
 
-.howSection {
-  padding: 95px clamp(24px, 7vw, 112px);
-  background: #f2f2ef;
-  scroll-margin-top: 76px;
-}
+.normListSection { padding: 65px clamp(20px, 5vw, 70px) 90px; background: white; border-top: 1px solid var(--line); }
+.sectionHeading { max-width: 1280px; margin: 0 auto 30px; display: flex; justify-content: space-between; align-items: end; gap: 24px; }
+.sectionHeading h2, .reasonBox h2, .contributionHeader h2 { font-family: "Sokol Tyrs", Impact, sans-serif; font-weight: 400; text-transform: uppercase; margin: 0; }
+.sectionHeading h2 { font-size: clamp(38px, 4vw, 56px); }
+.filterTabs { display: flex; padding: 3px; border: 1px solid var(--line); border-radius: 5px; }
+.filterTabs button { border: 0; background: transparent; padding: 8px 12px; cursor: pointer; font-size: 12px; }
+.filterTabs button.active { background: var(--ink); color: white; border-radius: 3px; }
+.normGrid { max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.normCard { border: 1px solid var(--line); background: white; padding: 22px; display: flex; flex-direction: column; min-height: 365px; }
+.cardTop, .detailMeta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.normNumber { font-family: "Sokol Fugner", monospace; color: var(--red); font-size: 17px; letter-spacing: .03em; }
+.statusBadge { display: inline-flex; align-items: center; width: fit-content; border-radius: 20px; padding: 5px 9px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
+.statusBadge.open { color: var(--red-dark); background: #f9e6ea; }
+.statusBadge.review { color: #8b560e; background: #f7eddd; }
+.statusBadge.approved { color: var(--green); background: #e7f1eb; }
+.statusBadge.rejected { color: #7e323d; background: #f4e5e7; }
+.statusBadge.neutral { color: #666; background: #eeeeeb; }
+.category { color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-size: 10px; margin: 22px 0 7px; }
+.normCard h3 { font-family: "Sokol Tyrs", Impact, sans-serif; font-size: 29px; line-height: 1; font-weight: 400; text-transform: uppercase; margin: 0 0 13px; }
+.summary { color: #53534f; line-height: 1.55; font-size: 13px; margin: 0 0 18px; }
+.normCard dl { display: grid; gap: 9px; margin: auto 0 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.normCard dl div { display: grid; grid-template-columns: 84px 1fr; gap: 8px; font-size: 11px; }
+.normCard dt { color: var(--muted); }
+.normCard dd { margin: 0; font-weight: 700; line-height: 1.35; }
+.cardFooter { border-top: 1px solid var(--line); padding-top: 14px; display: flex; justify-content: space-between; align-items: center; }
+.cardFooter span { color: var(--muted); font-size: 11px; }
+.cardFooter button, .backButton { border: 0; background: transparent; padding: 0; color: var(--red); font-weight: 800; cursor: pointer; font-size: 12px; }
 
-.sectionHeader { max-width: 1380px; margin: 0 auto 45px; display: grid; grid-template-columns: .5fr 1fr 1fr; gap: 40px; align-items: start; }
-.sectionHeader > div { display: flex; align-items: center; gap: 12px; }
-.sectionIndex { font-family: "Sokol Fügner", monospace; font-size: 36px; color: var(--red); }
-.sectionHeader > div p { font-size: 10px; font-weight: 900; letter-spacing: .09em; }
-.sectionHeader h2 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: clamp(48px, 5.5vw, 78px); line-height: .84; margin: 0; }
-.sectionHeader > p { font-size: 16px; line-height: 1.6; max-width: 440px; margin: 5px 0 0; }
-.howSteps { max-width: 1380px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); border: 2px solid var(--ink); }
-.howSteps article { min-height: 285px; background: white; padding: 25px; border-right: 1px solid var(--ink); position: relative; }
-.howSteps article:last-child { border-right: 0; }
-.howSteps article.highlightStep { background: var(--red); color: white; }
-.stepNumber { font-family: "Sokol Fügner", monospace; font-size: 23px; color: var(--red); }
-.highlightStep .stepNumber { color: white; }
-.stepIcon { font-family: "Sokol Fügner", monospace; font-size: 46px; margin: 25px 0 22px; min-height: 52px; }
-.howSteps h3 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-size: 25px; line-height: .95; font-weight: 400; margin: 0 0 13px; }
-.howSteps p { font-size: 12px; line-height: 1.55; margin: 0; color: #555552; }
-.highlightStep p { color: white; }
-.howCta { max-width: 1380px; margin: 30px auto 0; padding: 19px 0; border-top: 6px solid var(--ink); border-bottom: 2px solid var(--ink); display: flex; justify-content: space-between; align-items: center; gap: 20px; }
-.howCta p { margin: 0; }
-.howCta button { background: var(--ink); color: white; border: 0; padding: 13px 18px; font-weight: 800; cursor: pointer; }
-.howCta button:hover { background: var(--red); }
-.howCta button span { margin-left: 20px; }
+.detailPage, .adminPage { max-width: 1440px; margin: 0 auto; padding: 34px clamp(18px, 4vw, 58px) 90px; }
+.backButton { margin-bottom: 27px; }
+.detailHeader { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 30px; align-items: end; padding-bottom: 30px; border-bottom: 1px solid var(--line); }
+.detailMeta { justify-content: flex-start; }
+.detailHeader h1 { font-size: clamp(44px, 5vw, 68px); margin: 14px 0 12px; }
+.detailHeader > div > p { color: var(--muted); line-height: 1.55; max-width: 800px; margin: 0; }
+.detailActions { display: flex; gap: 8px; }
+.detailActions > button:not(.primaryButton), .adminToolbar button, .contributionHeader button, .replyForm button, .adminReply button, .modalActions > button:not(.primaryButton) { border: 1px solid var(--line); background: white; padding: 9px 12px; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 12px; }
+.detailFacts { display: grid; grid-template-columns: repeat(4, 1fr); margin: 22px 0; background: white; border: 1px solid var(--line); }
+.detailFacts div { padding: 15px 18px; border-right: 1px solid var(--line); }
+.detailFacts div:last-child { border: 0; }
+.detailFacts span { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
+.detailFacts b { font-size: 12px; line-height: 1.35; }
+.detailLayout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(350px, .7fr); gap: 22px; align-items: start; }
+.documentColumn { display: grid; gap: 18px; }
+.reasonBox, .documentPaper, .contributions { background: white; border: 1px solid var(--line); }
+.reasonBox { padding: clamp(25px, 4vw, 42px); border-left: 4px solid var(--red); }
+.reasonBox h2 { font-size: 34px; margin-bottom: 12px; }
+.reasonBox > p:last-child { line-height: 1.7; color: #444; margin: 0; }
+.documentPaper { padding: clamp(28px, 5vw, 62px); }
+.documentLabel { color: var(--red); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; }
+.documentPaper > h2 { font-family: "Sokol Tyrs", Impact, sans-serif; text-transform: uppercase; font-size: clamp(38px, 4vw, 56px); line-height: .95; font-weight: 400; margin: 10px 0 42px; }
+.documentSection { margin-top: 34px; }
+.documentSection > div { display: flex; align-items: baseline; gap: 15px; padding-bottom: 12px; border-bottom: 2px solid var(--ink); }
+.documentSection > div b { font-family: "Sokol Fugner", monospace; font-size: 22px; }
+.documentSection h3 { margin: 0; font-size: 18px; }
+.documentSection > p { display: grid; grid-template-columns: 34px 1fr; gap: 8px; font-family: Georgia, serif; line-height: 1.75; margin: 20px 0; }
+.documentSection > p span { font-weight: 700; }
+.needVote { margin-top: 45px; padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 20px; background: var(--canvas); border: 1px solid var(--line); }
+.needVote p { color: var(--muted); font-size: 11px; margin: 5px 0 0; }
+.needVote > div:last-child { display: flex; gap: 6px; }
+.needVote button { border: 1px solid var(--line); background: white; border-radius: 4px; padding: 8px 11px; cursor: pointer; font-weight: 700; }
+.needVote button.selected.yes { color: var(--green); border-color: #75a58c; background: #eaf3ed; }
+.needVote button.selected.no { color: var(--red); border-color: #d7a0aa; background: #f7e8eb; }
 
-.processHeader { background: var(--paper); padding: 28px 32px 0; border-top: 8px solid var(--ink); border-bottom: 1px solid var(--line); scroll-margin-top: 76px; }
-.backline { display: flex; gap: 9px; color: #898985; font-size: 12px; margin-bottom: 18px; }
-.backline b { color: #bbb; }
-.processTitleRow { display: flex; align-items: flex-end; justify-content: space-between; max-width: 1220px; }
-.eyebrow { color: var(--red); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
-.liveDot { display: inline-block; width: 7px; height: 7px; background: var(--red); border-radius: 50%; margin-right: 6px; box-shadow: 0 0 0 4px #c61f2f1c; }
-.processTitleRow h1 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-size: clamp(34px, 3.8vw, 56px); font-weight: 400; line-height: .9; margin: 0; letter-spacing: 0; }
-.processTitleRow p { color: var(--muted); margin: 8px 0 0; }
-.deadline { border-left: 1px solid var(--line); padding-left: 24px; display: grid; min-width: 180px; }
-.deadline small { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
-.deadline strong { font-family: Georgia, serif; font-size: 25px; color: var(--red); }
-.deadline span { color: var(--muted); font-size: 12px; }
+.contributions { position: sticky; top: 90px; max-height: calc(100vh - 115px); overflow-y: auto; }
+.contributionHeader { padding: 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 14px; align-items: end; }
+.contributionHeader h2 { font-size: 28px; }
+.contributionHeader > div:last-child { display: flex; gap: 5px; }
+.closedNotice { margin: 14px; padding: 12px; background: #efefec; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.submissionCard { padding: 20px; border-bottom: 1px solid var(--line); }
+.submissionTop { display: flex; justify-content: space-between; gap: 12px; color: var(--red); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; font-weight: 800; }
+.submissionTop small { color: var(--muted); }
+.submissionCard h3 { margin: 11px 0 7px; font-size: 18px; }
+.submissionCard > p { margin: 0 0 13px; color: #50504d; line-height: 1.55; font-size: 13px; }
+.authorLine { display: flex; flex-wrap: wrap; gap: 6px; font-size: 10px; }
+.authorLine span { color: var(--muted); }
+.resolutionBox { margin-top: 13px; padding: 12px; border-left: 3px solid; font-size: 11px; }
+.resolutionBox.accepted { background: #edf5f0; border-color: var(--green); }
+.resolutionBox.declined { background: #f3efef; border-color: #86606a; }
+.resolutionBox p { line-height: 1.5; margin: 5px 0; }
+.resolutionBox small { color: var(--muted); }
+.reply { margin-top: 10px; padding: 9px 11px; background: var(--canvas); border-radius: 4px; font-size: 11px; }
+.reply p { margin: 4px 0 0; line-height: 1.45; }
+.replyForm { display: flex; margin-top: 9px; }
+.replyForm input { flex: 1; min-width: 0; border: 1px solid var(--line); border-right: 0; padding: 8px; border-radius: 4px 0 0 4px; }
+.replyForm button { border-radius: 0 4px 4px 0; }
+.voteRow { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 10px; }
+.voteRow > div { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.voteRow button { width: 29px; height: 27px; border: 0; background: white; cursor: pointer; }
+.voteRow button.selected { background: #e8f2eb; color: var(--green); }
+.voteRow button.selected.down { background: #f6e8eb; color: var(--red); }
+.voteRow b { min-width: 28px; text-align: center; }
 
-.phaseTrack { display: flex; max-width: 820px; margin-top: 25px; }
-.phase { flex: 1; display: flex; gap: 9px; position: relative; padding-bottom: 17px; color: #a1a19d; }
-.phase::after { content: ""; position: absolute; left: 30px; right: 8px; top: 11px; height: 1px; background: #d8d7d3; }
-.phase:last-child::after { display: none; }
-.phase i { width: 23px; height: 23px; border-radius: 50%; border: 1px solid #cbc9c4; display: grid; place-items: center; font-style: normal; font-size: 11px; background: white; z-index: 1; }
-.phase span { display: grid; line-height: 1.15; z-index: 1; background: var(--paper); padding-right: 8px; }
-.phase b { font-size: 11px; white-space: nowrap; }
-.phase small { font-size: 10px; margin-top: 3px; }
-.phase.done, .phase.current { color: var(--ink); }
-.phase.done i { background: var(--ink); color: white; border-color: var(--ink); }
-.phase.current i { background: var(--red); color: white; border-color: var(--red); }
-.phase.current::before { content: ""; position: absolute; height: 3px; background: var(--red); bottom: 0; left: 0; right: 15px; }
+.adminHeading { display: flex; justify-content: space-between; gap: 30px; align-items: end; padding-bottom: 28px; }
+.adminHeading h1 { font-size: clamp(48px, 5vw, 68px); margin: 0 0 9px; }
+.adminHeading > div > p:last-child { color: var(--muted); margin: 0; }
+.adminLayout { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 18px; align-items: start; }
+.adminNormList { background: white; border: 1px solid var(--line); position: sticky; top: 88px; }
+.adminNormList > button { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: white; padding: 16px; text-align: left; cursor: pointer; display: grid; gap: 6px; }
+.adminNormList > button:last-child { border: 0; }
+.adminNormList > button.active { box-shadow: inset 4px 0 var(--red); background: #fbf8f8; }
+.adminNormList > button > span { color: var(--red); font-family: "Sokol Fugner", monospace; font-size: 14px; }
+.adminNormList > button > b { font-size: 12px; line-height: 1.35; }
+.adminWorkspace { display: grid; gap: 14px; min-width: 0; }
+.adminToolbar, .adminSection { background: white; border: 1px solid var(--line); }
+.adminToolbar { padding: 20px; display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+.adminToolbar h2 { font-family: "Sokol Tyrs", Impact, sans-serif; text-transform: uppercase; font-size: 31px; font-weight: 400; margin: 5px 0 0; }
+.adminToolbar > div:last-child { display: flex; gap: 7px; }
+.dangerButton { color: #9c2136; border-color: #d7aab2 !important; }
+.adminSection { padding: 22px; }
+.adminSectionTitle { display: flex; justify-content: space-between; gap: 20px; align-items: start; margin-bottom: 20px; }
+.adminSectionTitle h3 { margin: 0; font-size: 20px; }
+.adminSectionTitle p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+.adminControls { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 14px; }
+.adminControls.twoColumns { grid-template-columns: 1fr 1fr; }
+label { display: grid; gap: 6px; color: #4c4c49; font-size: 11px; font-weight: 800; }
+input, textarea, select { width: 100%; border: 1px solid #cdccc6; background: white; border-radius: 4px; padding: 10px; outline: none; color: var(--ink); }
+textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
+input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow: 0 0 0 3px #d7193f13; }
+.wide { grid-column: 1 / -1; }
+.toggleControl { display: flex; justify-content: space-between; gap: 12px; align-items: center; border: 1px solid var(--line); padding: 12px; }
+.toggleControl span { font-size: 11px; }
+.closeButton { border: 1px solid #d4a2aa; background: #fbf0f2; color: #8b1d31; padding: 9px 12px; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 12px; }
+.fileField { border: 1px dashed #bbb9b1; background: var(--canvas); padding: 15px; cursor: pointer; }
+.fileField input { border: 0; background: transparent; padding: 4px 0 0; }
+.resolutionList { display: grid; gap: 12px; }
+.resolutionItem { border: 1px solid var(--line); padding: 17px; display: grid; grid-template-columns: .9fr 1.1fr; gap: 20px; }
+.resolutionItem > div > span { color: var(--red); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.resolutionItem h4 { font-size: 17px; margin: 8px 0; }
+.resolutionItem > div > p { color: #4f4f4c; line-height: 1.5; font-size: 12px; }
+.resolutionItem > div > small { color: var(--muted); }
+.resolutionItem > form:not(.adminReply) { display: grid; gap: 10px; }
+.adminReply { grid-column: 1 / -1; display: flex; border-top: 1px solid var(--line); padding-top: 13px; }
+.adminReply input { flex: 1; border-radius: 4px 0 0 4px; }
+.adminReply button { border-radius: 0 4px 4px 0; }
 
-.workspace { display: grid; grid-template-columns: 250px minmax(420px, 1fr) 370px; min-height: calc(100vh - 250px); max-width: 1600px; margin: 0 auto; }
-.outline, .discussion { background: #f7f6f2; }
-.outline { border-right: 1px solid var(--line); padding: 20px 15px; }
-.asideHead { display: flex; justify-content: space-between; align-items: center; padding: 0 7px 13px; }
-.asideHead b { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: 19px; }
-.asideHead button { border: 1px solid var(--line); background: white; border-radius: 4px; width: 25px; height: 25px; cursor: pointer; }
-.progressBox { background: white; border: 1px solid #e5e4df; padding: 11px; border-radius: 6px; margin-bottom: 15px; }
-.progressBox > div:first-child { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
-.progressBox b { color: var(--ink); }
-.progress { height: 4px; background: #e8e7e2; border-radius: 4px; margin-top: 8px; overflow: hidden; }
-.progress i { display: block; width: 42%; height: 100%; background: var(--red); }
-.sectionList { display: grid; gap: 4px; }
-.sectionList button { border: 0; background: transparent; text-align: left; padding: 11px 9px; display: flex; gap: 10px; border-radius: 6px; cursor: pointer; }
-.sectionList button:hover { background: white; }
-.sectionList button.active { background: #fff; box-shadow: 0 1px 5px #2221; }
-.sectionNo { font-family: Georgia, serif; color: #a09f9a; padding-top: 1px; font-size: 12px; }
-.sectionList button.active .sectionNo { color: var(--red); font-weight: 700; }
-.sectionName { font-weight: 650; line-height: 1.3; }
-.sectionName small { display: block; color: #93938f; font-weight: 400; font-size: 10px; margin-top: 4px; }
-.helpCard { display: flex; gap: 10px; margin: 22px 5px 0; padding: 12px; border: 1px solid #dedbd1; background: var(--cream); border-radius: 6px; }
-.helpCard > .icon { width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: white; flex: 0 0 auto; }
-.helpCard b { font-size: 11px; }
-.helpCard p { margin: 4px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.modalBackdrop { position: fixed; inset: 0; z-index: 60; background: #111a; display: grid; place-items: center; padding: 20px; }
+.modal { width: min(520px, 100%); max-height: 92vh; overflow-y: auto; background: white; padding: 30px; position: relative; box-shadow: 0 20px 60px #0005; }
+.wideModal { width: min(760px, 100%); }
+.modalClose { position: absolute; top: 10px; right: 12px; border: 0; background: transparent; color: var(--muted); font-size: 24px; cursor: pointer; }
+.modal h2 { font-family: "Sokol Tyrs", Impact, sans-serif; font-size: 37px; text-transform: uppercase; font-weight: 400; margin: 0 0 22px; }
+.modal > label { margin-top: 12px; }
+.formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.modalActions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 20px; }
+.emptyState { grid-column: 1 / -1; padding: 40px; border: 1px dashed #c6c5be; background: #fafaf8; color: var(--muted); text-align: center; }
+.toast { position: fixed; left: 50%; bottom: 25px; transform: translateX(-50%); z-index: 80; background: var(--ink); color: white; border-radius: 4px; padding: 11px 16px; box-shadow: 0 8px 30px #0004; font-size: 12px; }
 
-.document { padding: 25px clamp(20px, 4vw, 58px) 55px; background: var(--canvas); min-width: 0; }
-.docToolbar { display: flex; justify-content: flex-end; gap: 7px; margin-bottom: 11px; }
-.docToolbar button { border: 1px solid #d7d6d1; background: rgba(255,255,255,.7); border-radius: 5px; padding: 7px 10px; color: #6b6b67; cursor: pointer; font-size: 11px; }
-.docToolbar button:hover { background: white; color: var(--ink); }
-.docToolbar small { font-size: 8px; }
-.paper { max-width: 760px; min-height: 740px; background: var(--paper); margin: 0 auto; padding: clamp(30px, 5vw, 64px); border: 1px solid #deddd8; box-shadow: 0 8px 28px #34332e10; }
-.paperLabel { color: var(--red); letter-spacing: .15em; font-size: 10px; font-weight: 800; }
-.paper h2 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: clamp(34px, 4vw, 48px); line-height: .92; margin: 9px 0 18px; }
-.rule { width: 42px; height: 3px; background: var(--red); margin-bottom: 42px; }
-.clauseMeta { display: flex; gap: 13px; align-items: baseline; margin-bottom: 16px; }
-.clauseMeta b { font-family: "Sokol Fügner", monospace; font-size: 27px; font-weight: 400; }
-.clauseMeta span { color: var(--muted); font-size: 12px; }
-.paragraph { position: relative; display: grid; grid-template-columns: 32px 1fr; gap: 8px; padding: 13px 28px 13px 4px; border-left: 3px solid transparent; border-radius: 0 5px 5px 0; }
-.paragraph:hover, .activeParagraph { background: #f9f5eb; border-left-color: #dfcfae; }
-.paragraph p { font-family: Georgia, "Times New Roman", serif; font-size: 16px; line-height: 1.75; margin: 0; }
-.paraNo { font-family: Georgia, serif; font-weight: 700; line-height: 1.8; }
-.annotationPin, .addPin { position: absolute; right: -12px; top: 50%; transform: translateY(-50%); width: 29px; height: 29px; border-radius: 50%; border: 2px solid white; background: var(--red); color: white; font-size: 10px; font-weight: 800; box-shadow: 0 2px 7px #3334; cursor: pointer; }
-.annotationPin.amber { background: var(--amber); }
-.addPin { background: white; color: var(--red); border: 1px solid #dfd8cc; opacity: 0; }
-.paragraph:hover .addPin { opacity: 1; }
-.needVote { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; margin-top: 45px; padding: 17px; background: #f2f0e9; border-radius: 7px; border: 1px solid #e1ded4; }
-.needIcon { width: 34px; height: 34px; display: grid; place-items: center; background: white; color: var(--red); border-radius: 50%; font-size: 19px; }
-.needVote b { font-size: 12px; }
-.needVote p { margin: 4px 0 0; color: var(--muted); font-size: 10px; max-width: 320px; }
-.needButtons { display: flex; gap: 5px; }
-.needButtons button { border: 1px solid #d3d0c8; background: white; border-radius: 5px; padding: 7px 10px; font-weight: 700; cursor: pointer; font-size: 11px; }
-.needButtons button span { color: var(--muted); margin-left: 3px; }
-.needButtons button.selected.yes { background: #e5f1e9; border-color: #9bc0a9; color: var(--green); }
-.needButtons button.selected.no { background: #f7e7e7; border-color: #d6a2a7; color: var(--red); }
-.outcomePreview { margin-top: 18px; border-left: 2px solid #bbb7ae; padding-left: 12px; color: var(--muted); }
-.outcomePreview span { font-size: 9px; text-transform: uppercase; letter-spacing: .1em; font-weight: 800; }
-.outcomePreview p { font-size: 10px; margin: 3px 0; line-height: 1.5; }
-
-.discussion { border-left: 1px solid var(--line); min-width: 0; overflow: hidden; }
-.discussionTabs { height: 51px; display: flex; background: white; border-bottom: 1px solid var(--line); padding: 0 18px; }
-.discussionTabs button { flex: 1; border: 0; background: transparent; color: #777773; position: relative; cursor: pointer; font-size: 12px; }
-.discussionTabs button.active { color: var(--ink); font-weight: 800; }
-.discussionTabs button.active::after { content: ""; position: absolute; bottom: -1px; left: 10px; right: 10px; height: 3px; background: var(--red); }
-.discussionTabs span { display: inline-grid; place-items: center; min-width: 18px; height: 18px; background: #ecebe7; border-radius: 10px; margin-left: 4px; font-size: 9px; }
-.panelIntro { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 12px; }
-.panelIntro b { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: 19px; }
-.panelIntro p { margin: 3px 0 0; font-size: 10px; color: var(--muted); }
-.panelIntro .primary { padding: 8px 10px; font-size: 10px; }
-.proposalList { height: 780px; overflow-y: auto; padding: 0 12px 40px; }
-.proposalCard { background: white; border: 1px solid #deddd8; border-radius: 7px; padding: 14px; margin-bottom: 10px; box-shadow: 0 2px 7px #3331; }
-.proposalTop { display: flex; justify-content: space-between; align-items: center; }
-.status { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; border-radius: 10px; padding: 4px 7px; }
-.status.orange { color: #a65d10; background: #f9ebd7; }
-.status.green { color: var(--green); background: #e1efe6; }
-.status.gray { color: #6f706e; background: #ececea; }
-.sectionRef { color: var(--muted); font-size: 9px; }
-.proposalCard h3 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: 20px; line-height: 1; margin: 10px 0 6px; }
-.proposalText { color: #555551; font-size: 11px; line-height: 1.55; margin: 0 0 12px; }
-.resolution { padding: 8px 10px; border-radius: 5px; margin: 8px 0 12px; border-left: 3px solid; }
-.resolution.green { background: #edf5f0; border-color: var(--green); }
-.resolution.gray { background: #f0f0ee; border-color: #8c8c89; }
-.resolution b { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
-.resolution p { margin: 3px 0 0; font-size: 10px; line-height: 1.4; }
-.author { display: flex; gap: 8px; align-items: center; }
-.author > span { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; background: #ded7cd; color: #494640; font-size: 10px; font-weight: 800; }
-.author div { display: grid; }
-.author b { font-size: 10px; }
-.author small { color: var(--muted); font-size: 8px; margin-top: 2px; }
-.proposalFoot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #ecebe7; margin-top: 12px; padding-top: 10px; }
-.voteControl { display: inline-flex; align-items: center; background: #f1f0ed; border-radius: 5px; overflow: hidden; }
-.voteControl button { width: 29px; height: 27px; border: 0; background: transparent; cursor: pointer; font-weight: 800; }
-.voteControl button.selected { background: #e2efe6; color: var(--green); }
-.voteControl button.selected.down { background: #f5e2e3; color: var(--red); }
-.voteControl b { min-width: 28px; text-align: center; font-size: 11px; }
-.commentsLink { border: 0; background: transparent; color: #777773; font-size: 10px; cursor: pointer; }
-.commentsLink:hover { color: var(--red); }
-
-.commentsPanel { height: 840px; overflow-y: auto; }
-.commentForm { margin: 2px 18px 14px; background: white; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
-.commentForm textarea { width: 100%; min-height: 82px; border: 0; resize: vertical; padding: 11px; outline: 0; font-size: 11px; }
-.commentForm > div { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #eee; padding: 7px 8px; }
-.commentForm small { color: var(--muted); font-size: 9px; }
-.commentForm button { border: 0; border-radius: 4px; background: var(--red); color: white; padding: 6px 10px; font-weight: 700; cursor: pointer; font-size: 10px; }
-.commentList { padding: 0 18px; }
-.comment { background: white; border-bottom: 1px solid var(--line); padding: 14px 2px; }
-.comment > p { font-size: 11px; line-height: 1.55; margin: 10px 0; }
-.comment > button { border: 0; background: transparent; padding: 0; color: var(--muted); font-size: 9px; cursor: pointer; }
-
-.modalBackdrop { position: fixed; inset: 0; z-index: 50; background: #171716b8; display: grid; place-items: center; padding: 20px; backdrop-filter: blur(3px); }
-.modal { width: min(480px, 100%); background: var(--paper); border-radius: 11px; padding: 32px; position: relative; box-shadow: 0 25px 80px #0007; }
-.modalClose { position: absolute; top: 12px; right: 14px; border: 0; background: transparent; font-size: 25px; color: var(--muted); cursor: pointer; }
-.modalIcon { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 50%; background: #f5e7e8; color: var(--red); font-size: 25px; }
-.modal h2 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: 34px; line-height: .95; margin: 15px 0 8px; }
-.modal > p { color: var(--muted); line-height: 1.55; font-size: 12px; }
-.dropzone { display: grid; place-items: center; border: 1.5px dashed #c8c3b8; border-radius: 8px; padding: 28px; margin-top: 20px; cursor: pointer; background: var(--cream); }
-.dropzone:hover { border-color: var(--red); }
-.dropzone span { color: var(--muted); margin-top: 4px; font-size: 11px; }
-.dropzone input { display: none; }
-.privacy { display: block; color: var(--muted); text-align: center; margin-top: 13px; font-size: 9px; }
-.proposalModal label { display: grid; gap: 5px; margin-top: 13px; font-size: 10px; font-weight: 800; }
-.proposalModal input, .proposalModal textarea { border: 1px solid var(--line); border-radius: 5px; background: white; padding: 10px; outline: none; font-size: 11px; }
-.proposalModal textarea { min-height: 72px; resize: vertical; }
-.proposalModal input:focus, .proposalModal textarea:focus { border-color: var(--red); box-shadow: 0 0 0 3px #c61f2f12; }
-.modalActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-.modalActions button { border: 1px solid var(--line); background: white; border-radius: 5px; padding: 9px 13px; cursor: pointer; }
-.modalActions .primary { border-color: var(--red); background: var(--red); }
-.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 70; background: #272725; color: white; border-radius: 7px; padding: 11px 17px; box-shadow: 0 8px 25px #0004; font-size: 11px; animation: toastIn .25s ease-out; }
-@keyframes toastIn { from { opacity: 0; transform: translate(-50%, 8px); } }
-
-.mobileSwitch { display: none; }
-
-@media (max-width: 1080px) {
-  .heroGrid { grid-template-columns: 1fr 390px; gap: 45px; }
-  .heroCopy h1 { font-size: clamp(64px, 9vw, 94px); }
-  .sectionHeader { grid-template-columns: .35fr 1fr 1fr; }
-  .howSteps { grid-template-columns: repeat(2, 1fr); }
-  .howSteps article:nth-child(2) { border-right: 0; }
-  .howSteps article:nth-child(-n+2) { border-bottom: 1px solid var(--ink); }
-  .workspace { grid-template-columns: 220px minmax(430px, 1fr); }
-  .discussion { position: fixed; top: 70px; right: 0; bottom: 0; width: 380px; z-index: 25; box-shadow: -8px 0 28px #0002; transform: translateX(100%); transition: transform .25s; }
-  .discussion.mobileVisible { transform: translateX(0); }
-  .phaseTrack { max-width: 700px; }
+@media (max-width: 1050px) {
+  .normGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detailLayout { grid-template-columns: 1fr; }
+  .contributions { position: static; max-height: none; }
+  .detailFacts { grid-template-columns: repeat(2, 1fr); }
+  .detailFacts div:nth-child(2) { border-right: 0; }
+  .detailFacts div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .adminControls { grid-template-columns: 1fr 1fr; }
+  .toggleControl { grid-column: 1 / -1; }
 }
 
 @media (max-width: 760px) {
-  .topbar { height: 58px; padding: 0 14px; }
-  .brand { min-width: auto; gap: 7px; }
-  .brandLogo { width: 36px; height: 36px; }
+  body { font-size: 14px; }
+  .topbar { height: 58px; padding: 0 12px; gap: 10px; }
+  .brand img { width: 34px; height: 34px; }
+  .brand span { font-size: 0; }
   .brand strong { font-size: 21px; }
-  .brand small, .brandSlash { display: none; }
-  .mainnav, .uploadButton { display: none; }
-  .landing { padding: 38px 16px 0; scroll-margin-top: 58px; }
-  .heroGrid { display: block; min-height: auto; }
-  .heroCopy h1 { font-size: clamp(54px, 18vw, 72px); margin: 29px 0 23px; }
-  .heroLead { font-size: 15px; }
-  .heroActions { display: grid; grid-template-columns: 1fr; }
-  .heroActions button { width: 100%; }
-  .heroTrust { display: grid; gap: 9px; margin-top: 28px; }
-  .heroVisual { margin: 55px 12px 0 0; min-height: 470px; padding: 18px; box-shadow: 12px 12px 0 var(--ink); }
-  .visualDocument { min-height: 345px; padding: 20px; }
-  .visualDocument h2 { font-size: 47px; }
-  .miniProposal { margin-left: 14px; }
-  .visualStamp { width: 92px; height: 92px; right: -11px; bottom: -33px; font-size: 16px; }
-  .doubleLine { margin-top: 70px; }
-  .howSection { padding: 70px 16px; scroll-margin-top: 58px; }
-  .sectionHeader { display: block; margin-bottom: 30px; }
-  .sectionHeader h2 { font-size: 58px; margin: 25px 0; }
-  .sectionHeader > p { font-size: 14px; }
-  .howSteps { grid-template-columns: 1fr; }
-  .howSteps article { border-right: 0; border-bottom: 1px solid var(--ink); min-height: 235px; }
-  .howSteps article:nth-child(2) { border-right: 0; }
-  .howSteps article:last-child { border-bottom: 0; }
-  .howCta { display: block; }
-  .howCta p { line-height: 1.5; }
-  .howCta button { width: 100%; margin-top: 16px; }
-  .processHeader { padding: 16px 16px 0; }
-  .backline { margin-bottom: 12px; }
-  .processTitleRow { align-items: start; gap: 12px; }
-  .processTitleRow h1 { font-size: 25px; }
-  .processTitleRow p { font-size: 11px; }
-  .deadline { min-width: 75px; padding-left: 12px; }
-  .deadline strong { font-size: 20px; }
-  .deadline span { display: none; }
-  .phaseTrack { margin-top: 18px; }
-  .phase { justify-content: center; }
-  .phase span, .phase::after { display: none; }
-  .phase.current::before { right: 0; }
-  .mobileSwitch { display: grid; grid-template-columns: repeat(3, 1fr); position: sticky; top: 58px; z-index: 20; background: white; border-bottom: 1px solid var(--line); }
-  .mobileSwitch button { height: 43px; border: 0; background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; }
-  .mobileSwitch button.active { color: var(--red); font-weight: 800; border-bottom: 2px solid var(--red); }
-  .mobileSwitch span { background: #eee; border-radius: 8px; padding: 1px 5px; font-size: 9px; }
-  .workspace { display: block; min-height: auto; }
-  .outline, .document, .discussion { display: none; }
-  .outline.mobileVisible, .document.mobileVisible, .discussion.mobileVisible { display: block; }
-  .outline { border-right: 0; min-height: 60vh; padding: 20px 14px; }
-  .document { padding: 12px 8px 35px; }
-  .docToolbar { padding: 0 3px; }
-  .docToolbar button { padding: 7px; }
-  .paper { min-height: 610px; padding: 32px 24px; }
-  .rule { margin-bottom: 28px; }
-  .paragraph { padding-right: 18px; }
-  .paragraph p { font-size: 15px; line-height: 1.65; }
-  .annotationPin, .addPin { right: -12px; }
-  .addPin { opacity: 1; }
-  .needVote { grid-template-columns: auto 1fr; }
-  .needButtons { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
-  .discussion { position: static; width: auto; height: auto; transform: none; box-shadow: none; border-left: 0; min-height: 70vh; }
-  .proposalList, .commentsPanel { height: auto; overflow: visible; }
-  .modal { padding: 25px 20px; max-height: 92vh; overflow-y: auto; }
-  .toast { width: calc(100% - 30px); text-align: center; bottom: 15px; }
+  .topbar nav { gap: 2px; flex: 1; justify-content: center; }
+  .topbar nav button { padding: 0 8px; font-size: 11px; }
+  .userBox { display: none; }
+  .hero { display: block; padding: 45px 18px 50px; }
+  .hero h1 { font-size: 55px; }
+  .hero > div > p:not(.kicker) { font-size: 16px; }
+  .hero aside { margin-top: 35px; padding: 21px; }
+  .normListSection { padding: 45px 14px 60px; }
+  .sectionHeading { display: block; }
+  .sectionHeading h2 { font-size: 42px; }
+  .filterTabs { margin-top: 20px; width: fit-content; }
+  .normGrid { grid-template-columns: 1fr; }
+  .normCard { min-height: auto; }
+  .detailPage, .adminPage { padding: 22px 12px 60px; }
+  .detailHeader, .adminHeading { display: block; }
+  .detailHeader h1 { font-size: 44px; }
+  .detailActions { margin-top: 20px; display: grid; }
+  .detailFacts { grid-template-columns: 1fr; }
+  .detailFacts div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .detailFacts div:nth-child(2) { border-bottom: 1px solid var(--line); }
+  .documentPaper { padding: 28px 21px; }
+  .documentSection > p { font-size: 15px; }
+  .needVote { display: block; }
+  .needVote > div:last-child { margin-top: 15px; }
+  .contributionHeader { display: block; }
+  .contributionHeader > div:last-child { margin-top: 13px; }
+  .adminHeading .primaryButton { margin-top: 18px; width: 100%; }
+  .adminLayout { grid-template-columns: 1fr; }
+  .adminNormList { position: static; display: flex; overflow-x: auto; }
+  .adminNormList > button { min-width: 210px; border-right: 1px solid var(--line); border-bottom: 0; }
+  .adminNormList > button.active { box-shadow: inset 0 -4px var(--red); }
+  .adminToolbar { display: block; }
+  .adminToolbar > div:last-child { margin-top: 15px; }
+  .adminControls, .adminControls.twoColumns, .formGrid { grid-template-columns: 1fr; }
+  .wide, .toggleControl { grid-column: auto; }
+  .resolutionItem { grid-template-columns: 1fr; }
+  .adminReply { grid-column: auto; }
+  .modal { padding: 26px 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+  * { scroll-behavior: auto !important; }
 }

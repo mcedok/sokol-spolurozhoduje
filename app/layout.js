@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "Sokol spolurozhoduje",
-  description: "Participativní připomínkování dokumentů členy Sokola",
+  description: "Participativní připomínkování sokolských norem",
 };
 
 export default function RootLayout({ children }) {

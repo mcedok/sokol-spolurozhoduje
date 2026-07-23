@@ -1,397 +1,766 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-const sections = [
-  { id: "uvod", no: "01", title: "Úvodní ustanovení", comments: 2, proposals: 1 },
-  { id: "clenstvi", no: "02", title: "Členství a práva členů", comments: 8, proposals: 3 },
-  { id: "organy", no: "03", title: "Orgány jednoty", comments: 4, proposals: 2 },
-  { id: "hospodareni", no: "04", title: "Hospodaření", comments: 1, proposals: 0 },
-  { id: "zaver", no: "05", title: "Závěrečná ustanovení", comments: 0, proposals: 1 },
+const STORAGE_KEY = "sokol-spolurozhoduje-pilot-v2";
+const DB_NAME = "sokol-spolurozhoduje-files";
+const STORE_NAME = "documents";
+
+const STATUS_OPTIONS = [
+  "Koncept",
+  "K připomínkování",
+  "Vypořádání",
+  "Ke schválení",
+  "Schváleno",
+  "Neschváleno",
+  "Archivováno",
 ];
 
-const initialProposals = [
+const statusClass = {
+  Koncept: "neutral",
+  "K připomínkování": "open",
+  Vypořádání: "review",
+  "Ke schválení": "review",
+  Schváleno: "approved",
+  Neschváleno: "rejected",
+  Archivováno: "neutral",
+};
+
+const initialNorms = [
   {
-    id: 1,
-    section: "§ 4 odst. 2",
-    title: "Doplnit možnost vzdálené účasti",
-    text: "Člen má právo účastnit se schůze také prostřednictvím prostředků komunikace na dálku, umožňuje-li to povaha jednání.",
-    author: "Jana K.",
-    unit: "TJ Sokol Brno I",
-    score: 28,
-    status: "V posouzení",
-    tone: "orange",
-    comments: 6,
+    id: "norm-001",
+    number: "SOKOL-2026-001",
+    title: "Členský a organizační řád",
+    category: "Vnitřní předpis",
+    version: "2.1",
+    status: "K připomínkování",
+    commentsOpen: true,
+    publishedAt: "2026-06-12",
+    deadline: "2026-08-15",
+    submittedBy: "Předsednictvo České obce sokolské",
+    responsible: "Odbor organizace ČOS",
+    summary:
+      "Návrh sjednocuje členská práva, digitální účast a pravidla rozhodování v tělocvičných jednotách.",
+    reason:
+      "Dosavadní úprava nepočítá s běžným využíváním elektronických nástrojů a vzdálenou účastí. Navrhované změny zpřesňují práva členů, lhůty pro vyřízení podnětů a způsob zveřejňování rozhodnutí. Cílem je srozumitelnější a jednotný postup napříč župami a tělocvičnými jednotami.",
+    file: null,
+    needVotes: { yes: 72, no: 28 },
+    sections: [
+      {
+        id: "rights",
+        label: "§ 4",
+        title: "Práva člena",
+        paragraphs: [
+          "Člen Sokola má právo účastnit se činnosti jednoty, být informován o jejím hospodaření a podílet se na rozhodování v rozsahu stanoveném tímto řádem.",
+          "Člen může předkládat návrhy a podněty orgánům jednoty. Orgán, kterému byl podnět doručen, jej projedná a o výsledku člena vyrozumí.",
+          "Člen má právo nahlížet do zápisů z jednání orgánů jednoty, pokud tím nejsou dotčena práva třetích osob nebo povinnost mlčenlivosti.",
+        ],
+      },
+      {
+        id: "bodies",
+        label: "§ 9",
+        title: "Orgány jednoty",
+        paragraphs: [
+          "Orgány jednoty rozhodují transparentně a zveřejňují přijatá usnesení způsobem dostupným členům.",
+          "Jednání orgánu může proběhnout prezenčně, distančně nebo kombinovanou formou.",
+        ],
+      },
+    ],
+    submissions: [
+      {
+        id: "sub-1",
+        kind: "Návrh úpravy",
+        section: "§ 4 odst. 2",
+        title: "Doplnit možnost vzdálené účasti",
+        text: "Doplnit právo účastnit se schůze prostřednictvím prostředků komunikace na dálku.",
+        author: "Jana K.",
+        unit: "TJ Sokol Brno I",
+        createdAt: "2026-06-18",
+        score: 28,
+        resolutionStatus: "Nevypořádáno",
+        resolution: "",
+        adminComment: "",
+        replies: [
+          {
+            id: "reply-1",
+            author: "Petr N.",
+            text: "Podporuji, zejména pro členy mimo místo jednoty.",
+          },
+        ],
+      },
+      {
+        id: "sub-2",
+        kind: "Návrh úpravy",
+        section: "§ 4 odst. 2",
+        title: "Stanovit lhůtu 30 dnů",
+        text: "Navrhuji nahradit neurčitou formulaci konkrétní lhůtou 30 kalendářních dnů.",
+        author: "Petr N.",
+        unit: "Sokol Praha Vršovice",
+        createdAt: "2026-06-20",
+        score: 17,
+        resolutionStatus: "Zapracováno",
+        resolution: "Přijato do pracovní verze 2.2; lhůta byla doplněna.",
+        adminComment: "Děkujeme za přesný a proveditelný návrh.",
+        replies: [],
+      },
+      {
+        id: "sub-3",
+        kind: "Komentář",
+        section: "§ 4 odst. 1",
+        title: "Věková hranice členského práva",
+        text: "Platí toto právo ve stejném rozsahu také pro členy mladší 18 let?",
+        author: "Marek S.",
+        unit: "TJ Sokol Liberec",
+        createdAt: "2026-06-22",
+        score: 6,
+        resolutionStatus: "Nezapracováno",
+        resolution:
+          "Rozsah práv nezletilých členů upravují stanovy; do tohoto řádu bude doplněn odkaz.",
+        adminComment: "",
+        replies: [],
+      },
+    ],
   },
   {
-    id: 2,
-    section: "§ 4 odst. 3",
-    title: "Zpřesnit lhůtu pro vyřízení podnětu",
-    text: "Navrhuji nahradit neurčitou formulaci konkrétní lhůtou 30 kalendářních dnů.",
-    author: "Petr N.",
-    unit: "Sokol Praha Vršovice",
-    score: 17,
-    status: "Zapracováno",
-    tone: "green",
-    comments: 3,
+    id: "norm-002",
+    number: "SOKOL-2026-002",
+    title: "Pravidla pro elektronické hlasování",
+    category: "Metodický pokyn",
+    version: "1.0",
+    status: "Vypořádání",
+    commentsOpen: false,
+    publishedAt: "2026-05-04",
+    deadline: "2026-06-30",
+    submittedBy: "Výbor České obce sokolské",
+    responsible: "Kancelář ČOS",
+    summary:
+      "Procesní pravidla pro ověření člena, bezpečné hlasování a zveřejnění výsledků.",
+    reason:
+      "Elektronické hlasování je používáno rozdílně a bez jednotných minimálních pravidel. Materiál stanovuje požadavky na identifikaci hlasujícího, auditní stopu, ochranu osobních údajů a řešení technických incidentů.",
+    file: null,
+    needVotes: { yes: 89, no: 11 },
+    sections: [
+      {
+        id: "security",
+        label: "Čl. 3",
+        title: "Ověření a bezpečnost",
+        paragraphs: [
+          "Každý hlasující člen musí být před hlasováním jednoznačně ověřen.",
+          "Systém uchovává auditní záznam bez zveřejnění obsahu tajného hlasování.",
+        ],
+      },
+    ],
+    submissions: [
+      {
+        id: "sub-4",
+        kind: "Komentář",
+        section: "Čl. 3 odst. 2",
+        title: "Doba uchování auditního záznamu",
+        text: "Doporučuji uvést konkrétní skartační lhůtu.",
+        author: "Eva T.",
+        unit: "Sokol Plzeň",
+        createdAt: "2026-05-21",
+        score: 13,
+        resolutionStatus: "Zapracováno",
+        resolution: "Doplněna lhůta 5 let od ukončení hlasování.",
+        adminComment: "",
+        replies: [],
+      },
+    ],
   },
   {
-    id: 3,
-    section: "§ 4 odst. 1",
-    title: "Rozšířit výčet členských práv",
-    text: "Doplnit právo na přístup k zápisům a rozhodnutím orgánů jednoty v elektronické podobě.",
-    author: "Alena H.",
-    unit: "TJ Sokol Olomouc",
-    score: 11,
-    status: "Nezapracováno",
-    tone: "gray",
-    comments: 9,
+    id: "norm-003",
+    number: "SOKOL-2026-003",
+    title: "Zásady péče o sokolský majetek",
+    category: "Směrnice",
+    version: "0.8",
+    status: "Koncept",
+    commentsOpen: false,
+    publishedAt: "",
+    deadline: "",
+    submittedBy: "Ekonomická komise ČOS",
+    responsible: "Majetkový odbor ČOS",
+    summary:
+      "Připravovaná pravidla evidence, údržby a odpovědnosti za společný majetek.",
+    reason:
+      "Materiál reaguje na rozdílnou praxi při evidenci a plánování oprav sokolského majetku.",
+    file: null,
+    needVotes: { yes: 0, no: 0 },
+    sections: [
+      {
+        id: "evidence",
+        label: "Čl. 2",
+        title: "Evidence majetku",
+        paragraphs: [
+          "Jednota vede průběžnou evidenci nemovitého a významného movitého majetku.",
+        ],
+      },
+    ],
+    submissions: [],
   },
 ];
 
-const initialComments = [
-  { id: 1, author: "Marek S.", time: "před 2 h", text: "Platí toto právo i pro členy mladší 18 let?", likes: 4 },
-  { id: 2, author: "Eva T.", time: "včera", text: "Bylo by dobré odkázat na konkrétní článek stanov.", likes: 7 },
-];
+function dateLabel(value) {
+  if (!value) return "neuvedeno";
+  return new Intl.DateTimeFormat("cs-CZ", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(`${value}T12:00:00`));
+}
 
-function Icon({ children }) {
-  return <span className="icon" aria-hidden="true">{children}</span>;
+function openFilesDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
+        request.result.createObjectStore(STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function storeFile(id, file) {
+  const db = await openFilesDb();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    transaction.objectStore(STORE_NAME).put(file, id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}
+
+async function readFile(id) {
+  const db = await openFilesDb();
+  const file = await new Promise((resolve, reject) => {
+    const request = db.transaction(STORE_NAME).objectStore(STORE_NAME).get(id);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return file;
+}
+
+async function removeFile(id) {
+  if (!id) return;
+  const db = await openFilesDb();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    transaction.objectStore(STORE_NAME).delete(id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  db.close();
+}
+
+function StatusBadge({ value }) {
+  return <span className={`statusBadge ${statusClass[value] || "neutral"}`}>{value}</span>;
+}
+
+function EmptyState({ children }) {
+  return <div className="emptyState">{children}</div>;
 }
 
 export default function Home() {
-  const [activeSection, setActiveSection] = useState("clenstvi");
-  const [panel, setPanel] = useState("navrhy");
-  const [proposals, setProposals] = useState(initialProposals);
+  const [norms, setNorms] = useState(initialNorms);
+  const [hydrated, setHydrated] = useState(false);
+  const [view, setView] = useState("landing");
+  const [selectedId, setSelectedId] = useState(initialNorms[0].id);
+  const [adminId, setAdminId] = useState(initialNorms[0].id);
+  const [filter, setFilter] = useState("Aktivní");
+  const [submissionMode, setSubmissionMode] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [toast, setToast] = useState("");
   const [votes, setVotes] = useState({});
   const [needVote, setNeedVote] = useState(null);
-  const [comments, setComments] = useState(initialComments);
-  const [commentText, setCommentText] = useState("");
-  const [showUpload, setShowUpload] = useState(false);
-  const [showProposal, setShowProposal] = useState(false);
-  const [toast, setToast] = useState("");
-  const [mobileTab, setMobileTab] = useState("dokument");
 
-  const active = useMemo(() => sections.find((s) => s.id === activeSection), [activeSection]);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (saved) setNorms(JSON.parse(saved));
+    } catch {
+      // Pilot remains usable with the bundled demo data.
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (hydrated) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(norms));
+  }, [hydrated, norms]);
+
+  const selectedNorm = useMemo(
+    () => norms.find((norm) => norm.id === selectedId) || norms[0],
+    [norms, selectedId],
+  );
+  const adminNorm = useMemo(
+    () => norms.find((norm) => norm.id === adminId) || norms[0],
+    [norms, adminId],
+  );
+  const filteredNorms = useMemo(() => {
+    if (filter === "Všechny") return norms;
+    if (filter === "Uzavřené") {
+      return norms.filter((norm) =>
+        ["Schváleno", "Neschváleno", "Archivováno"].includes(norm.status),
+      );
+    }
+    return norms.filter((norm) =>
+      ["K připomínkování", "Vypořádání", "Ke schválení"].includes(norm.status),
+    );
+  }, [filter, norms]);
 
   function flash(message) {
     setToast(message);
-    window.setTimeout(() => setToast(""), 2400);
+    window.setTimeout(() => setToast(""), 2600);
   }
 
-  function voteProposal(id, direction) {
-    setProposals((items) => items.map((item) => {
-      if (item.id !== id) return item;
-      const previous = votes[id] || 0;
-      return { ...item, score: item.score - previous + direction };
+  function updateNorm(id, patch) {
+    setNorms((items) =>
+      items.map((norm) =>
+        norm.id === id
+          ? { ...norm, ...(typeof patch === "function" ? patch(norm) : patch) }
+          : norm,
+      ),
+    );
+  }
+
+  function openNorm(id) {
+    setSelectedId(id);
+    setView("detail");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openAdmin(id = adminId) {
+    if (id) setAdminId(id);
+    setView("admin");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function castVote(normId, submissionId, direction) {
+    const voteKey = `${normId}:${submissionId}`;
+    const previous = votes[voteKey] || 0;
+    updateNorm(normId, (norm) => ({
+      submissions: norm.submissions.map((item) =>
+        item.id === submissionId
+          ? { ...item, score: item.score - previous + direction }
+          : item,
+      ),
     }));
-    setVotes((current) => ({ ...current, [id]: direction }));
+    setVotes((current) => ({ ...current, [voteKey]: direction }));
   }
 
-  function addComment(event) {
+  async function downloadDocument(norm) {
+    if (!norm.file?.id) {
+      flash("K této normě zatím nebyl nahrán soubor.");
+      return;
+    }
+    try {
+      const file = await readFile(norm.file.id);
+      if (!file) throw new Error("Soubor nebyl nalezen");
+      const url = URL.createObjectURL(file);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = norm.file.name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      flash("Soubor je uložen v jiném prohlížeči nebo byl odstraněn.");
+    }
+  }
+
+  async function replaceDocument(norm, file) {
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      flash("Soubor může mít nejvýše 15 MB.");
+      return;
+    }
+    const fileId = `file-${norm.id}-${Date.now()}`;
+    try {
+      await storeFile(fileId, file);
+      await removeFile(norm.file?.id);
+      updateNorm(norm.id, {
+        file: { id: fileId, name: file.name, size: file.size, type: file.type },
+      });
+      flash("Dokument byl bezpečně uložen pro pilotní test.");
+    } catch {
+      flash("Soubor se nepodařilo uložit v tomto prohlížeči.");
+    }
+  }
+
+  async function deleteNorm(norm) {
+    if (!window.confirm(`Opravdu smazat normu ${norm.number} – ${norm.title}?`)) return;
+    await removeFile(norm.file?.id);
+    setNorms((items) => items.filter((item) => item.id !== norm.id));
+    const fallback = norms.find((item) => item.id !== norm.id);
+    setAdminId(fallback?.id || "");
+    setSelectedId(fallback?.id || "");
+    flash("Norma byla smazána.");
+  }
+
+  function createNorm(event) {
     event.preventDefault();
-    if (!commentText.trim()) return;
-    setComments((items) => [
-      ...items,
-      { id: Date.now(), author: "Vy", time: "právě teď", text: commentText.trim(), likes: 0 },
-    ]);
-    setCommentText("");
-    flash("Komentář byl přidán do ukázky.");
+    const form = new FormData(event.currentTarget);
+    const year = new Date().getFullYear();
+    const sequence =
+      Math.max(
+        0,
+        ...norms.map((norm) => Number.parseInt(norm.number.split("-").at(-1), 10) || 0),
+      ) + 1;
+    const id = `norm-${Date.now()}`;
+    const file = form.get("file");
+    const newNorm = {
+      id,
+      number: `SOKOL-${year}-${String(sequence).padStart(3, "0")}`,
+      title: form.get("title").trim(),
+      category: form.get("category").trim(),
+      version: form.get("version").trim(),
+      status: form.get("status"),
+      commentsOpen: form.get("status") === "K připomínkování",
+      publishedAt:
+        form.get("status") === "K připomínkování"
+          ? new Date().toISOString().slice(0, 10)
+          : "",
+      deadline: form.get("deadline"),
+      submittedBy: form.get("submittedBy").trim(),
+      responsible: form.get("responsible").trim(),
+      summary: form.get("summary").trim(),
+      reason: form.get("reason").trim(),
+      file: null,
+      needVotes: { yes: 0, no: 0 },
+      sections: [
+        {
+          id: "document",
+          label: "Dokument",
+          title: "Text nahraného materiálu",
+          paragraphs: [
+            "Pro pilotní test je původní soubor dostupný ke stažení. Strukturovaný převod dokumentu bude doplněn v navazující integrační fázi.",
+          ],
+        },
+      ],
+      submissions: [],
+    };
+    setNorms((items) => [...items, newNorm]);
+    setAdminId(id);
+    setSelectedId(id);
+    setShowCreate(false);
+    if (file instanceof File && file.size > 0) {
+      window.setTimeout(() => replaceDocument(newNorm, file), 0);
+    }
+    flash(`Norma ${newNorm.number} byla založena.`);
   }
 
-  function goTo(id) {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  function submitContribution(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const kind = submissionMode === "proposal" ? "Návrh úpravy" : "Komentář";
+    const contribution = {
+      id: `sub-${Date.now()}`,
+      kind,
+      section: form.get("section").trim() || "Obecně",
+      title: form.get("title").trim(),
+      text: form.get("text").trim(),
+      author: form.get("author").trim(),
+      unit: form.get("unit").trim(),
+      createdAt: new Date().toISOString().slice(0, 10),
+      score: 0,
+      resolutionStatus: "Nevypořádáno",
+      resolution: "",
+      adminComment: "",
+      replies: [],
+    };
+    updateNorm(selectedNorm.id, (norm) => ({
+      submissions: [...norm.submissions, contribution],
+    }));
+    setSubmissionMode(null);
+    flash(`${kind} byl zveřejněn.`);
+  }
+
+  function addReply(event, normId, submissionId, author = "Předkladatel") {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const text = form.get("reply").trim();
+    if (!text) return;
+    updateNorm(normId, (norm) => ({
+      submissions: norm.submissions.map((item) =>
+        item.id === submissionId
+          ? {
+              ...item,
+              replies: [
+                ...(item.replies || []),
+                { id: `reply-${Date.now()}`, author, text },
+              ],
+            }
+          : item,
+      ),
+    }));
+    event.currentTarget.reset();
+    flash("Odpověď byla přidána.");
+  }
+
+  function resolveSubmission(event, normId, submissionId) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    updateNorm(normId, (norm) => ({
+      submissions: norm.submissions.map((item) =>
+        item.id === submissionId
+          ? {
+              ...item,
+              resolutionStatus: form.get("resolutionStatus"),
+              resolution: form.get("resolution").trim(),
+              adminComment: form.get("adminComment").trim(),
+            }
+          : item,
+      ),
+    }));
+    flash("Vypořádání bylo uloženo a je viditelné členům.");
   }
 
   return (
     <main>
       <header className="topbar">
-        <button className="brand" onClick={() => goTo("uvod")} aria-label="Sokol spolurozhoduje - úvod">
-          <img src="/brand/sokol-symbol.png" alt="" className="brandLogo" />
-          <div>
-            <strong>SOKOL</strong><span className="brandSlash">/</span>
-            <small>SPOLUROZHODUJE</small>
-          </div>
+        <button className="brand" onClick={() => setView("landing")}>
+          <img src="/brand/sokol-symbol.png" alt="" />
+          <span><strong>SOKOL</strong> spolurozhoduje</span>
         </button>
-        <nav className="mainnav" aria-label="Hlavní navigace">
-          <button onClick={() => goTo("uvod")}>Úvod</button>
-          <button onClick={() => goTo("jak-to-funguje")}>Jak to funguje</button>
-          <button className="active" onClick={() => goTo("pripominkovani")}>Dokumenty</button>
+        <nav aria-label="Hlavní navigace">
+          <button className={view === "landing" ? "active" : ""} onClick={() => setView("landing")}>Normy</button>
+          <button className={view === "detail" ? "active" : ""} onClick={() => openNorm(selectedNorm?.id)}>Připomínkování</button>
+          <button className={view === "admin" ? "active" : ""} onClick={() => openAdmin()}>Administrace</button>
         </nav>
-        <div className="headerActions">
-          <button className="uploadButton" onClick={() => setShowUpload(true)}><Icon>＋</Icon> Nahrát dokument</button>
-          <button className="avatar" title="Profil">MK</button>
-        </div>
+        <div className="userBox"><span>MK</span><small>pilotní účet</small></div>
       </header>
 
-      <section className="landing" id="uvod">
-        <div className="heroGrid">
-          <div className="heroCopy">
-            <div className="heroKicker"><span /> Digitální prostor členů Sokola</div>
-            <h1>Rozhodujme<br /><em>společně.</em></h1>
-            <p className="heroLead">Místo, kde členové Sokola připomínkují důležité dokumenty, předkládají konkrétní návrhy a vidí, jak bylo s každým podnětem naloženo.</p>
-            <div className="heroActions">
-              <button className="heroPrimary" onClick={() => goTo("pripominkovani")}>Vstoupit do připomínkování <span>↘</span></button>
-              <button className="heroSecondary" onClick={() => goTo("jak-to-funguje")}>Jak to probíhá</button>
+      {view === "landing" && (
+        <>
+          <section className="hero">
+            <div>
+              <p className="kicker">Participativní tvorba sokolských norem</p>
+              <h1>Rozhodujme společně.</h1>
+              <p>Připomínkujte návrhy, podávejte konkrétní úpravy a sledujte, jak předkladatel každý podnět vypořádal.</p>
+              <button className="primaryButton" onClick={() => document.getElementById("normy")?.scrollIntoView({ behavior: "smooth" })}>Zobrazit normy</button>
             </div>
-            <div className="heroTrust">
-              <span><b>01</b> Pro registrované členy</span>
-              <span><b>02</b> Transparentní vypořádání</span>
-              <span><b>03</b> Dostupné i z mobilu</span>
-            </div>
-          </div>
-          <div className="heroVisual" aria-label="Ukázka průběhu připomínkování">
-            <div className="visualTopline"><span>AKTUÁLNĚ</span><b>01 / 03</b></div>
-            <div className="visualDocument">
-              <div className="docMiniHead">
-                <span>NÁVRH DOKUMENTU</span><b>12 DNÍ</b>
-              </div>
-              <h2>Členský a<br />organizační řád</h2>
-              <div className="visualRule"><i /><i /></div>
-              <div className="miniParagraph"><b>§ 4</b><span>Člen Sokola má právo účastnit se činnosti jednoty a podílet se na rozhodování…</span><i>5</i></div>
-              <div className="miniProposal">
-                <small>NÁVRH ÚPRAVY</small>
-                <p>Doplnit možnost vzdálené účasti</p>
-                <div><span>↑ 28 podpořilo</span><b>V POSOUZENÍ</b></div>
-              </div>
-            </div>
-            <div className="visualStamp">SPOLEČNĚ<br />V POHYBU</div>
-          </div>
-        </div>
-        <div className="doubleLine" />
-      </section>
+            <aside>
+              <b>Jak to probíhá</b>
+              <ol>
+                <li><span>1</span>Přečtete si materiál a důvodovou zprávu.</li>
+                <li><span>2</span>Přidáte komentář nebo přesný návrh změny.</li>
+                <li><span>3</span>Hlasováním podpoříte důležité podněty.</li>
+                <li><span>4</span>Uvidíte rozhodnutí a odůvodnění předkladatele.</li>
+              </ol>
+            </aside>
+          </section>
 
-      <section className="howSection" id="jak-to-funguje">
-        <div className="sectionHeader">
-          <div><span className="sectionIndex">01</span><p>JAK TO FUNGUJE</p></div>
-          <h2>Od dokumentu<br />k rozhodnutí.</h2>
-          <p>Jednoduchý a dohledatelný proces dává každému členu prostor vyjádřit se a předkladateli jasný přehled, co je potřeba vypořádat.</p>
-        </div>
-        <div className="howSteps">
-          <article>
-            <span className="stepNumber">01</span>
-            <div className="stepIcon">▤</div>
-            <h3>Přečtu si dokument</h3>
-            <p>Dokument je rozdělený do přehledných částí. Připomínkování má jasný termín i pravidla.</p>
-          </article>
-          <article>
-            <span className="stepNumber">02</span>
-            <div className="stepIcon">◌</div>
-            <h3>Přidám připomínku</h3>
-            <p>Ke konkrétnímu odstavci mohu položit otázku nebo navrhnout přesné nové znění.</p>
-          </article>
-          <article>
-            <span className="stepNumber">03</span>
-            <div className="stepIcon">↕</div>
-            <h3>Podpořím priority</h3>
-            <p>Hlasováním ukážu, které návrhy považuji za důležité a zaslouží si pozornost.</p>
-          </article>
-          <article className="highlightStep">
-            <span className="stepNumber">04</span>
-            <div className="stepIcon">✓</div>
-            <h3>Vidím výsledek</h3>
-            <p>U každého návrhu je zveřejněno rozhodnutí, odůvodnění a vazba na finální dokument.</p>
-          </article>
-        </div>
-        <div className="howCta">
-          <p><b>Máte k návrhu co říct?</b> Vstupte do právě probíhajícího připomínkování.</p>
-          <button onClick={() => goTo("pripominkovani")}>Zobrazit dokument <span>→</span></button>
-        </div>
-      </section>
-
-      <section className="processHeader" id="pripominkovani">
-        <div className="backline"><span>Dokumenty</span><b>›</b><span>Vnitřní předpisy</span></div>
-        <div className="processTitleRow">
-          <div>
-            <div className="eyebrow"><span className="liveDot" /> Připomínkování probíhá</div>
-            <h1>Návrh členského a organizačního řádu</h1>
-            <p>Verze 2.1 · zveřejněno 12. června 2026</p>
-          </div>
-          <div className="deadline">
-            <small>Zbývá</small>
-            <strong>12 dní</strong>
-            <span>do 5. července 2026</span>
-          </div>
-        </div>
-        <div className="phaseTrack" aria-label="Průběh procesu">
-          <div className="phase done"><i>✓</i><span><b>1. Zveřejnění</b><small>12. 6.</small></span></div>
-          <div className="phase current"><i>2</i><span><b>Připomínkování</b><small>právě probíhá</small></span></div>
-          <div className="phase"><i>3</i><span><b>Vypořádání</b><small>od 6. 7.</small></span></div>
-          <div className="phase"><i>4</i><span><b>Rozhodnutí</b><small>31. 8.</small></span></div>
-        </div>
-      </section>
-
-      <div className="mobileSwitch">
-        <button className={mobileTab === "obsah" ? "active" : ""} onClick={() => setMobileTab("obsah")}>Obsah</button>
-        <button className={mobileTab === "dokument" ? "active" : ""} onClick={() => setMobileTab("dokument")}>Dokument</button>
-        <button className={mobileTab === "diskuse" ? "active" : ""} onClick={() => setMobileTab("diskuse")}>Diskuse <span>8</span></button>
-      </div>
-
-      <div className="workspace">
-        <aside className={`outline ${mobileTab === "obsah" ? "mobileVisible" : ""}`}>
-          <div className="asideHead"><b>Obsah dokumentu</b><button title="Sbalit">‹</button></div>
-          <div className="progressBox">
-            <div><span>Přečteno</span><b>42 %</b></div>
-            <div className="progress"><i /></div>
-          </div>
-          <div className="sectionList">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                className={activeSection === section.id ? "active" : ""}
-                onClick={() => { setActiveSection(section.id); setMobileTab("dokument"); }}
-              >
-                <span className="sectionNo">{section.no}</span>
-                <span className="sectionName">{section.title}<small>{section.comments} komentářů · {section.proposals} návrhy</small></span>
-              </button>
-            ))}
-          </div>
-          <div className="helpCard">
-            <Icon>?</Icon>
-            <div><b>Jak připomínkovat?</b><p>Označte odstavec nebo podejte konkrétní návrh úpravy.</p></div>
-          </div>
-        </aside>
-
-        <article className={`document ${mobileTab === "dokument" ? "mobileVisible" : ""}`}>
-          <div className="docToolbar">
-            <button onClick={() => flash("Velikost textu byla upravena.")}>A<small>A</small></button>
-            <button onClick={() => flash("Odkaz na tuto část je připraven ke sdílení.")}><Icon>↗</Icon> Sdílet část</button>
-            <button><Icon>⌕</Icon> Hledat</button>
-          </div>
-          <div className="paper">
-            <div className="paperLabel">ČÁST DRUHÁ</div>
-            <h2>{active?.title}</h2>
-            <div className="rule" />
-
-            <section className="clause">
-              <div className="clauseMeta"><b>§ 4</b><span>Práva člena</span></div>
-              <div className="paragraph activeParagraph">
-                <span className="paraNo">(1)</span>
-                <p>Člen Sokola má právo účastnit se činnosti jednoty, být informován o jejím hospodaření a podílet se na rozhodování v rozsahu stanoveném tímto řádem.</p>
-                <button className="annotationPin" onClick={() => { setPanel("komentare"); setMobileTab("diskuse"); }} aria-label="Zobrazit 5 komentářů">5</button>
-              </div>
-              <div className="paragraph">
-                <span className="paraNo">(2)</span>
-                <p>Člen může předkládat návrhy a podněty orgánům jednoty. Orgán, kterému byl podnět doručen, jej projedná a o výsledku člena vyrozumí.</p>
-                <button className="annotationPin amber" onClick={() => { setPanel("navrhy"); setMobileTab("diskuse"); }} aria-label="Zobrazit 3 návrhy">3</button>
-              </div>
-              <div className="paragraph">
-                <span className="paraNo">(3)</span>
-                <p>Člen má právo nahlížet do zápisů z jednání orgánů jednoty, pokud tím nejsou dotčena práva třetích osob nebo povinnost mlčenlivosti.</p>
-                <button className="addPin" onClick={() => { setPanel("komentare"); setMobileTab("diskuse"); }}>＋</button>
-              </div>
-            </section>
-
-            <div className="needVote">
-              <div className="needIcon">◎</div>
-              <div><b>Je tato úprava potřebná?</b><p>Pomozte určit, zda má být tato část zařazena do finálního hlasování.</p></div>
-              <div className="needButtons">
-                <button className={needVote === "yes" ? "selected yes" : ""} onClick={() => setNeedVote("yes")}>Ano <span>{needVote === "yes" ? 73 : 72}%</span></button>
-                <button className={needVote === "no" ? "selected no" : ""} onClick={() => setNeedVote("no")}>Ne <span>{needVote === "no" ? 29 : 28}%</span></button>
-              </div>
-            </div>
-
-            <div className="outcomePreview">
-              <span>Po ukončení připomínkování</span>
-              <p>U každého návrhu uvidíte rozhodnutí, odůvodnění a vazbu na finální znění dokumentu.</p>
-            </div>
-          </div>
-        </article>
-
-        <aside className={`discussion ${mobileTab === "diskuse" ? "mobileVisible" : ""}`}>
-          <div className="discussionTabs">
-            <button className={panel === "navrhy" ? "active" : ""} onClick={() => setPanel("navrhy")}>Návrhy <span>3</span></button>
-            <button className={panel === "komentare" ? "active" : ""} onClick={() => setPanel("komentare")}>Komentáře <span>{comments.length}</span></button>
-          </div>
-
-          {panel === "navrhy" ? (
-            <>
-              <div className="panelIntro">
-                <div><b>Návrhy úprav</b><p>Řazeno podle podpory členů</p></div>
-                <button className="primary" onClick={() => setShowProposal(true)}>＋ Nový návrh</button>
-              </div>
-              <div className="proposalList">
-                {proposals.map((proposal) => (
-                  <div className="proposalCard" key={proposal.id}>
-                    <div className="proposalTop">
-                      <span className={`status ${proposal.tone}`}>{proposal.status}</span>
-                      <span className="sectionRef">{proposal.section}</span>
-                    </div>
-                    <h3>{proposal.title}</h3>
-                    <p className="proposalText">{proposal.text}</p>
-                    {proposal.status !== "V posouzení" && (
-                      <div className={`resolution ${proposal.tone}`}>
-                        <b>{proposal.status === "Zapracováno" ? "✓ Rozhodnutí předkladatele" : "— Odůvodnění"}</b>
-                        <p>{proposal.status === "Zapracováno" ? "Přijato do verze 2.2; lhůta byla doplněna." : "Právo je již upraveno v § 11 stanov, duplicita není žádoucí."}</p>
-                      </div>
-                    )}
-                    <div className="author"><span>{proposal.author.slice(0, 1)}</span><div><b>{proposal.author}</b><small>{proposal.unit}</small></div></div>
-                    <div className="proposalFoot">
-                      <div className="voteControl">
-                        <button className={votes[proposal.id] === 1 ? "selected" : ""} onClick={() => voteProposal(proposal.id, 1)} aria-label="Podpořit">↑</button>
-                        <b>{proposal.score}</b>
-                        <button className={votes[proposal.id] === -1 ? "selected down" : ""} onClick={() => voteProposal(proposal.id, -1)} aria-label="Nepodpořit">↓</button>
-                      </div>
-                      <button className="commentsLink" onClick={() => setPanel("komentare")}>◯ {proposal.comments} reakcí</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="commentsPanel">
-              <div className="panelIntro">
-                <div><b>K § 4 odst. 1</b><p>Věcná diskuse k vybrané části</p></div>
-              </div>
-              <form className="commentForm" onSubmit={addComment}>
-                <textarea value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Přidejte věcný komentář…" />
-                <div><small>{commentText.length}/500</small><button type="submit">Odeslat</button></div>
-              </form>
-              <div className="commentList">
-                {comments.map((comment) => (
-                  <div className="comment" key={comment.id}>
-                    <div className="author"><span>{comment.author.slice(0, 1)}</span><div><b>{comment.author}</b><small>{comment.time}</small></div></div>
-                    <p>{comment.text}</p>
-                    <button onClick={() => flash("Reakce byla zaznamenána.")}>♡ Užitečné · {comment.likes}</button>
-                  </div>
+          <section className="normListSection" id="normy">
+            <div className="sectionHeading">
+              <div><p className="kicker">Evidence materiálů</p><h2>Normy k připomínkování</h2></div>
+              <div className="filterTabs">
+                {["Aktivní", "Uzavřené", "Všechny"].map((item) => (
+                  <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>
                 ))}
               </div>
             </div>
-          )}
-        </aside>
-      </div>
-
-      {showUpload && (
-        <div className="modalBackdrop" onClick={() => setShowUpload(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <button className="modalClose" onClick={() => setShowUpload(false)}>×</button>
-            <div className="modalIcon">⇧</div>
-            <h2>Nahrát dokument</h2>
-            <p>Podporované formáty: DOCX, PDF a ODT. Strukturu kapitol a odstavců platforma připraví automaticky.</p>
-            <label className="dropzone">
-              <b>Přetáhněte soubor sem</b>
-              <span>nebo klikněte pro výběr</span>
-              <input type="file" accept=".pdf,.docx,.odt" onChange={() => { setShowUpload(false); flash("Dokument byl přijat ke zpracování."); }} />
-            </label>
-            <small className="privacy">Dokument bude dostupný jen registrovaným členům zvolené jednoty.</small>
-          </div>
-        </div>
+            <div className="normGrid">
+              {filteredNorms.length ? filteredNorms.map((norm) => (
+                <article className="normCard" key={norm.id}>
+                  <div className="cardTop"><span className="normNumber">{norm.number}</span><StatusBadge value={norm.status} /></div>
+                  <p className="category">{norm.category} · verze {norm.version}</p>
+                  <h3>{norm.title}</h3>
+                  <p className="summary">{norm.summary}</p>
+                  <dl>
+                    <div><dt>Předkládá</dt><dd>{norm.submittedBy}</dd></div>
+                    <div><dt>Odpovídá</dt><dd>{norm.responsible}</dd></div>
+                    <div><dt>Připomínky</dt><dd>{norm.commentsOpen ? `do ${dateLabel(norm.deadline)}` : "uzavřeny"}</dd></div>
+                  </dl>
+                  <div className="cardFooter"><span>{norm.submissions.length} podnětů</span><button onClick={() => openNorm(norm.id)}>Otevřít materiál →</button></div>
+                </article>
+              )) : <EmptyState>V této skupině zatím nejsou žádné normy.</EmptyState>}
+            </div>
+          </section>
+        </>
       )}
 
-      {showProposal && (
-        <div className="modalBackdrop" onClick={() => setShowProposal(false)}>
-          <form className="modal proposalModal" onSubmit={(e) => { e.preventDefault(); setShowProposal(false); flash("Návrh byl uložen jako koncept."); }}>
-            <button type="button" className="modalClose" onClick={() => setShowProposal(false)}>×</button>
-            <div className="eyebrow">NOVÝ NÁVRH · § 4 ODST. 2</div>
-            <h2>Navrhněte konkrétní úpravu</h2>
-            <label>Název návrhu<input required placeholder="Stručně pojmenujte změnu" /></label>
-            <label>Navrhované znění<textarea required placeholder="Napište přesné nové znění…" /></label>
-            <label>Odůvodnění<textarea required placeholder="Vysvětlete přínos nebo problém…" /></label>
-            <div className="modalActions"><button type="button" onClick={() => setShowProposal(false)}>Zrušit</button><button className="primary" type="submit">Uložit koncept</button></div>
+      {view === "detail" && selectedNorm && (
+        <section className="detailPage">
+          <button className="backButton" onClick={() => setView("landing")}>← Zpět na seznam norem</button>
+          <div className="detailHeader">
+            <div>
+              <div className="detailMeta"><span className="normNumber">{selectedNorm.number}</span><StatusBadge value={selectedNorm.status} /></div>
+              <h1>{selectedNorm.title}</h1>
+              <p>{selectedNorm.summary}</p>
+            </div>
+            <div className="detailActions">
+              <button onClick={() => downloadDocument(selectedNorm)}>{selectedNorm.file ? `Stáhnout ${selectedNorm.file.name}` : "Soubor není přiložen"}</button>
+              <button className="primaryButton small" onClick={() => openAdmin(selectedNorm.id)}>Spravovat</button>
+            </div>
+          </div>
+
+          <div className="detailFacts">
+            <div><span>Předkládá</span><b>{selectedNorm.submittedBy}</b></div>
+            <div><span>Za normu odpovídá</span><b>{selectedNorm.responsible}</b></div>
+            <div><span>Zveřejněno</span><b>{dateLabel(selectedNorm.publishedAt)}</b></div>
+            <div><span>Termín</span><b>{dateLabel(selectedNorm.deadline)}</b></div>
+          </div>
+
+          <div className="detailLayout">
+            <div className="documentColumn">
+              <section className="reasonBox">
+                <p className="kicker">Průvodní informace / důvodová zpráva</p>
+                <h2>Proč se norma mění</h2>
+                <p>{selectedNorm.reason}</p>
+              </section>
+              <div className="documentPaper">
+                <p className="documentLabel">{selectedNorm.category} · verze {selectedNorm.version}</p>
+                <h2>{selectedNorm.title}</h2>
+                {selectedNorm.sections.map((section) => (
+                  <section className="documentSection" key={section.id}>
+                    <div><b>{section.label}</b><h3>{section.title}</h3></div>
+                    {section.paragraphs.map((paragraph, index) => (
+                      <p key={`${section.id}-${index}`}><span>({index + 1})</span>{paragraph}</p>
+                    ))}
+                  </section>
+                ))}
+                <div className="needVote">
+                  <div><b>Je přijetí této normy potřebné?</b><p>Orientační hlasování členů není konečným schválením normy.</p></div>
+                  <div>
+                    <button className={needVote === "yes" ? "selected yes" : ""} onClick={() => {
+                      if (needVote) return;
+                      setNeedVote("yes");
+                      updateNorm(selectedNorm.id, (norm) => ({ needVotes: { ...norm.needVotes, yes: norm.needVotes.yes + 1 } }));
+                    }}>Ano {selectedNorm.needVotes.yes}</button>
+                    <button className={needVote === "no" ? "selected no" : ""} onClick={() => {
+                      if (needVote) return;
+                      setNeedVote("no");
+                      updateNorm(selectedNorm.id, (norm) => ({ needVotes: { ...norm.needVotes, no: norm.needVotes.no + 1 } }));
+                    }}>Ne {selectedNorm.needVotes.no}</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside className="contributions">
+              <div className="contributionHeader">
+                <div><p className="kicker">Diskuse</p><h2>Podněty členů</h2></div>
+                {selectedNorm.commentsOpen && <div><button onClick={() => setSubmissionMode("comment")}>Komentář</button><button className="primaryButton small" onClick={() => setSubmissionMode("proposal")}>Návrh změny</button></div>}
+              </div>
+              {!selectedNorm.commentsOpen && <div className="closedNotice">Připomínkování je uzavřeno. Výsledky zůstávají veřejné.</div>}
+              {selectedNorm.submissions.length ? selectedNorm.submissions.slice().sort((a, b) => b.score - a.score).map((item) => {
+                const voteKey = `${selectedNorm.id}:${item.id}`;
+                return (
+                  <article className="submissionCard" key={item.id}>
+                    <div className="submissionTop"><span>{item.kind}</span><small>{item.section}</small></div>
+                    <h3>{item.title}</h3><p>{item.text}</p>
+                    <div className="authorLine"><b>{item.author}</b><span>{item.unit} · {dateLabel(item.createdAt)}</span></div>
+                    {item.resolutionStatus !== "Nevypořádáno" && (
+                      <div className={`resolutionBox ${item.resolutionStatus === "Zapracováno" ? "accepted" : "declined"}`}>
+                        <b>{item.resolutionStatus}</b><p>{item.resolution}</p>{item.adminComment && <small>Předkladatel: {item.adminComment}</small>}
+                      </div>
+                    )}
+                    {(item.replies || []).map((reply) => <div className="reply" key={reply.id}><b>{reply.author}</b><p>{reply.text}</p></div>)}
+                    {selectedNorm.commentsOpen && <form className="replyForm" onSubmit={(event) => addReply(event, selectedNorm.id, item.id, "Člen")}><input name="reply" aria-label="Odpověď" placeholder="Odpovědět…" required /><button>Odeslat</button></form>}
+                    <div className="voteRow"><span>Je tento podnět důležitý?</span><div><button className={votes[voteKey] === 1 ? "selected" : ""} onClick={() => castVote(selectedNorm.id, item.id, 1)}>↑</button><b>{item.score}</b><button className={votes[voteKey] === -1 ? "selected down" : ""} onClick={() => castVote(selectedNorm.id, item.id, -1)}>↓</button></div></div>
+                  </article>
+                );
+              }) : <EmptyState>Zatím nebyl přidán žádný podnět.</EmptyState>}
+            </aside>
+          </div>
+        </section>
+      )}
+
+      {view === "admin" && (
+        <section className="adminPage">
+          <div className="adminHeading">
+            <div><p className="kicker">Rozhraní předkladatele</p><h1>Správa norem</h1><p>Publikace materiálů, řízení připomínkování a transparentní vypořádání podnětů.</p></div>
+            <button className="primaryButton" onClick={() => setShowCreate(true)}>+ Předložit novou normu</button>
+          </div>
+          <div className="adminLayout">
+            <aside className="adminNormList">
+              {norms.map((norm) => <button key={norm.id} className={norm.id === adminNorm?.id ? "active" : ""} onClick={() => setAdminId(norm.id)}><span>{norm.number}</span><b>{norm.title}</b><StatusBadge value={norm.status} /></button>)}
+            </aside>
+            {adminNorm ? (
+              <div className="adminWorkspace">
+                <div className="adminToolbar">
+                  <div><span className="normNumber">{adminNorm.number}</span><h2>{adminNorm.title}</h2></div>
+                  <div><button onClick={() => openNorm(adminNorm.id)}>Veřejný náhled</button><button className="dangerButton" onClick={() => deleteNorm(adminNorm)}>Smazat</button></div>
+                </div>
+                <section className="adminSection">
+                  <div className="adminSectionTitle"><div><h3>Stav a připomínkování</h3><p>Změny se ihned projeví ve veřejném náhledu.</p></div><StatusBadge value={adminNorm.status} /></div>
+                  <div className="adminControls">
+                    <label>Status normy<select value={adminNorm.status} onChange={(event) => updateNorm(adminNorm.id, { status: event.target.value })}>{STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
+                    <label>Termín připomínek<input type="date" value={adminNorm.deadline || ""} onChange={(event) => updateNorm(adminNorm.id, { deadline: event.target.value })} /></label>
+                    <div className="toggleControl"><span>Připomínky jsou <b>{adminNorm.commentsOpen ? "otevřené" : "uzavřené"}</b></span><button className={adminNorm.commentsOpen ? "closeButton" : "primaryButton small"} onClick={() => updateNorm(adminNorm.id, { commentsOpen: !adminNorm.commentsOpen })}>{adminNorm.commentsOpen ? "Uzavřít připomínky" : "Otevřít připomínky"}</button></div>
+                  </div>
+                </section>
+                <section className="adminSection">
+                  <div className="adminSectionTitle"><div><h3>Dokument a odpovědnost</h3><p>Údaje, které členové uvidí u normy.</p></div></div>
+                  <div className="adminControls twoColumns">
+                    <label>Předkladatel<input value={adminNorm.submittedBy} onChange={(event) => updateNorm(adminNorm.id, { submittedBy: event.target.value })} /></label>
+                    <label>Odpovídá za normu<input value={adminNorm.responsible} onChange={(event) => updateNorm(adminNorm.id, { responsible: event.target.value })} /></label>
+                    <label className="wide">Průvodní informace / důvodová zpráva<textarea value={adminNorm.reason} onChange={(event) => updateNorm(adminNorm.id, { reason: event.target.value })} /></label>
+                    <label className="fileField wide"><span>{adminNorm.file ? `Nahráno: ${adminNorm.file.name}` : "Nahrát PDF, DOCX nebo ODT"}</span><input type="file" accept=".pdf,.docx,.odt" onChange={(event) => replaceDocument(adminNorm, event.target.files?.[0])} /></label>
+                  </div>
+                </section>
+                <section className="adminSection">
+                  <div className="adminSectionTitle"><div><h3>Vypořádání podnětů</h3><p>{adminNorm.submissions.filter((item) => item.resolutionStatus === "Nevypořádáno").length} čeká na rozhodnutí.</p></div></div>
+                  <div className="resolutionList">
+                    {adminNorm.submissions.length ? adminNorm.submissions.map((item) => (
+                      <article className="resolutionItem" key={item.id}>
+                        <div><span>{item.kind} · {item.section}</span><h4>{item.title}</h4><p>{item.text}</p><small>{item.author}, {item.unit} · podpora {item.score}</small></div>
+                        <form onSubmit={(event) => resolveSubmission(event, adminNorm.id, item.id)}>
+                          <label>Výsledek<select name="resolutionStatus" defaultValue={item.resolutionStatus}><option>Nevypořádáno</option><option>Zapracováno</option><option>Nezapracováno</option></select></label>
+                          <label>Odůvodnění rozhodnutí<textarea name="resolution" defaultValue={item.resolution} placeholder="Popište, jak a proč byl podnět vypořádán." /></label>
+                          <label>Komentář předkladatele<input name="adminComment" defaultValue={item.adminComment} placeholder="Volitelná doplňující odpověď" /></label>
+                          <button className="primaryButton small">Uložit vypořádání</button>
+                        </form>
+                        <form className="adminReply" onSubmit={(event) => addReply(event, adminNorm.id, item.id)}><input name="reply" placeholder="Okomentovat podnět jako předkladatel…" required /><button>Odeslat komentář</button></form>
+                      </article>
+                    )) : <EmptyState>U této normy zatím nejsou žádné podněty.</EmptyState>}
+                  </div>
+                </section>
+              </div>
+            ) : <EmptyState>Nejprve založte novou normu.</EmptyState>}
+          </div>
+        </section>
+      )}
+
+      {submissionMode && selectedNorm && (
+        <div className="modalBackdrop" onMouseDown={() => setSubmissionMode(null)}>
+          <form className="modal" onSubmit={submitContribution} onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="modalClose" onClick={() => setSubmissionMode(null)}>×</button>
+            <p className="kicker">{selectedNorm.number}</p><h2>{submissionMode === "proposal" ? "Nový návrh změny" : "Nový komentář"}</h2>
+            <label>Jméno<input name="author" required placeholder="Jan Novák" /></label>
+            <label>Jednota / župa<input name="unit" required placeholder="TJ Sokol…" /></label>
+            <label>Část dokumentu<input name="section" placeholder="např. § 4 odst. 2" /></label>
+            <label>Název<input name="title" required placeholder="Stručné pojmenování podnětu" /></label>
+            <label>{submissionMode === "proposal" ? "Navrhované znění a odůvodnění" : "Komentář"}<textarea name="text" required /></label>
+            <div className="modalActions"><button type="button" onClick={() => setSubmissionMode(null)}>Zrušit</button><button className="primaryButton">Zveřejnit</button></div>
           </form>
         </div>
       )}
 
-      {toast && <div className="toast">✓ {toast}</div>}
+      {showCreate && (
+        <div className="modalBackdrop" onMouseDown={() => setShowCreate(false)}>
+          <form className="modal wideModal" onSubmit={createNorm} onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="modalClose" onClick={() => setShowCreate(false)}>×</button>
+            <p className="kicker">Nový materiál</p><h2>Předložit normu</h2>
+            <div className="formGrid">
+              <label className="wide">Název normy<input name="title" required /></label>
+              <label>Druh dokumentu<input name="category" required placeholder="Směrnice" /></label>
+              <label>Verze<input name="version" required defaultValue="1.0" /></label>
+              <label>Předkladatel<input name="submittedBy" required /></label>
+              <label>Odpovídá za normu<input name="responsible" required /></label>
+              <label>Status<select name="status" defaultValue="Koncept">{STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
+              <label>Termín připomínek<input name="deadline" type="date" /></label>
+              <label className="wide">Krátké shrnutí<textarea name="summary" required /></label>
+              <label className="wide">Průvodní informace / důvodová zpráva<textarea name="reason" required /></label>
+              <label className="fileField wide"><span>Přiložit dokument (max. 15 MB)</span><input name="file" type="file" accept=".pdf,.docx,.odt" /></label>
+            </div>
+            <div className="modalActions"><button type="button" onClick={() => setShowCreate(false)}>Zrušit</button><button className="primaryButton">Předložit normu</button></div>
+          </form>
+        </div>
+      )}
+      {toast && <div className="toast">{toast}</div>}
     </main>
   );
 }
