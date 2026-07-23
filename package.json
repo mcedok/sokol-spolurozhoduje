@@ -2,9 +2,10 @@
   "name": "sokol-spolurozhoduje",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vinext dev",
-    "build": "vinext build && node scripts/prepare-sites.mjs",
+    "build": "vite build && node scripts/prepare-sites.mjs",
     "start": "vinext start"
   },
   "dependencies": {
@@ -14,9 +15,11 @@
     "react-server-dom-webpack": "19.2.8"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.22.1",
     "@vitejs/plugin-react": "^6.0.4",
     "@vitejs/plugin-rsc": "0.5.27",
     "vinext": "1.0.0-beta.3",
-    "vite": "^8.1.5"
+    "vite": "^8.1.5",
+    "wrangler": "^4.62.0"
   }
 }
