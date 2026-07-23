@@ -98,20 +98,24 @@ export default function Home() {
     flash("Komentář byl přidán do ukázky.");
   }
 
+  function goTo(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <main>
       <header className="topbar">
-        <div className="brand">
-          <div className="brandmark" aria-hidden="true"><span>S</span></div>
+        <button className="brand" onClick={() => goTo("uvod")} aria-label="Sokol spolurozhoduje - úvod">
+          <img src="/brand/sokol-symbol.png" alt="" className="brandLogo" />
           <div>
-            <strong>SOKOL</strong>
-            <small>spolurozhoduje</small>
+            <strong>SOKOL</strong><span className="brandSlash">/</span>
+            <small>SPOLUROZHODUJE</small>
           </div>
-        </div>
+        </button>
         <nav className="mainnav" aria-label="Hlavní navigace">
-          <button className="active">Dokumenty</button>
-          <button onClick={() => flash("Přehled procesů bude součástí další verze.")}>Rozhodování</button>
-          <button onClick={() => flash("Otevírá se metodika participace.")}>Jak to funguje</button>
+          <button onClick={() => goTo("uvod")}>Úvod</button>
+          <button onClick={() => goTo("jak-to-funguje")}>Jak to funguje</button>
+          <button className="active" onClick={() => goTo("pripominkovani")}>Dokumenty</button>
         </nav>
         <div className="headerActions">
           <button className="uploadButton" onClick={() => setShowUpload(true)}><Icon>＋</Icon> Nahrát dokument</button>
@@ -119,7 +123,82 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="processHeader">
+      <section className="landing" id="uvod">
+        <div className="heroGrid">
+          <div className="heroCopy">
+            <div className="heroKicker"><span /> Digitální prostor členů Sokola</div>
+            <h1>Rozhodujme<br /><em>společně.</em></h1>
+            <p className="heroLead">Místo, kde členové Sokola připomínkují důležité dokumenty, předkládají konkrétní návrhy a vidí, jak bylo s každým podnětem naloženo.</p>
+            <div className="heroActions">
+              <button className="heroPrimary" onClick={() => goTo("pripominkovani")}>Vstoupit do připomínkování <span>↘</span></button>
+              <button className="heroSecondary" onClick={() => goTo("jak-to-funguje")}>Jak to probíhá</button>
+            </div>
+            <div className="heroTrust">
+              <span><b>01</b> Pro registrované členy</span>
+              <span><b>02</b> Transparentní vypořádání</span>
+              <span><b>03</b> Dostupné i z mobilu</span>
+            </div>
+          </div>
+          <div className="heroVisual" aria-label="Ukázka průběhu připomínkování">
+            <div className="visualTopline"><span>AKTUÁLNĚ</span><b>01 / 03</b></div>
+            <div className="visualDocument">
+              <div className="docMiniHead">
+                <span>NÁVRH DOKUMENTU</span><b>12 DNÍ</b>
+              </div>
+              <h2>Členský a<br />organizační řád</h2>
+              <div className="visualRule"><i /><i /></div>
+              <div className="miniParagraph"><b>§ 4</b><span>Člen Sokola má právo účastnit se činnosti jednoty a podílet se na rozhodování…</span><i>5</i></div>
+              <div className="miniProposal">
+                <small>NÁVRH ÚPRAVY</small>
+                <p>Doplnit možnost vzdálené účasti</p>
+                <div><span>↑ 28 podpořilo</span><b>V POSOUZENÍ</b></div>
+              </div>
+            </div>
+            <div className="visualStamp">SPOLEČNĚ<br />V POHYBU</div>
+          </div>
+        </div>
+        <div className="doubleLine" />
+      </section>
+
+      <section className="howSection" id="jak-to-funguje">
+        <div className="sectionHeader">
+          <div><span className="sectionIndex">01</span><p>JAK TO FUNGUJE</p></div>
+          <h2>Od dokumentu<br />k rozhodnutí.</h2>
+          <p>Jednoduchý a dohledatelný proces dává každému členu prostor vyjádřit se a předkladateli jasný přehled, co je potřeba vypořádat.</p>
+        </div>
+        <div className="howSteps">
+          <article>
+            <span className="stepNumber">01</span>
+            <div className="stepIcon">▤</div>
+            <h3>Přečtu si dokument</h3>
+            <p>Dokument je rozdělený do přehledných částí. Připomínkování má jasný termín i pravidla.</p>
+          </article>
+          <article>
+            <span className="stepNumber">02</span>
+            <div className="stepIcon">◌</div>
+            <h3>Přidám připomínku</h3>
+            <p>Ke konkrétnímu odstavci mohu položit otázku nebo navrhnout přesné nové znění.</p>
+          </article>
+          <article>
+            <span className="stepNumber">03</span>
+            <div className="stepIcon">↕</div>
+            <h3>Podpořím priority</h3>
+            <p>Hlasováním ukážu, které návrhy považuji za důležité a zaslouží si pozornost.</p>
+          </article>
+          <article className="highlightStep">
+            <span className="stepNumber">04</span>
+            <div className="stepIcon">✓</div>
+            <h3>Vidím výsledek</h3>
+            <p>U každého návrhu je zveřejněno rozhodnutí, odůvodnění a vazba na finální dokument.</p>
+          </article>
+        </div>
+        <div className="howCta">
+          <p><b>Máte k návrhu co říct?</b> Vstupte do právě probíhajícího připomínkování.</p>
+          <button onClick={() => goTo("pripominkovani")}>Zobrazit dokument <span>→</span></button>
+        </div>
+      </section>
+
+      <section className="processHeader" id="pripominkovani">
         <div className="backline"><span>Dokumenty</span><b>›</b><span>Vnitřní předpisy</span></div>
         <div className="processTitleRow">
           <div>

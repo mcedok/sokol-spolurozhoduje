@@ -1,12 +1,24 @@
+@font-face {
+  font-family: "Sokol Tyrš";
+  src: url("/fonts/SokolTyrs-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Sokol Fügner";
+  src: url("/fonts/SokolFugner-Regular.ttf") format("truetype");
+  font-display: swap;
+}
+
 :root {
-  --red: #c61f2f;
-  --red-dark: #971827;
-  --ink: #252523;
+  --red: #e4002b;
+  --red-dark: #bd0024;
+  --ink: #090909;
   --muted: #6f706e;
   --line: #dddcd7;
   --paper: #fffefb;
-  --canvas: #f2f1ed;
-  --cream: #f8f4eb;
+  --canvas: #f3f3f0;
+  --cream: #f4f2ec;
   --green: #39785a;
   --amber: #bf6d17;
 }
@@ -16,7 +28,7 @@
 html, body { margin: 0; min-height: 100%; background: var(--canvas); color: var(--ink); }
 
 body {
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Work Sans", Arial, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
 }
 
@@ -24,34 +36,133 @@ button, input, textarea { font: inherit; }
 button { color: inherit; }
 
 .topbar {
-  height: 70px; display: flex; align-items: center; gap: 42px; padding: 0 32px;
-  background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30;
+  height: 76px; display: flex; align-items: center; gap: 42px; padding: 0 clamp(18px, 4vw, 64px);
+  background: #fff; border-bottom: 2px solid var(--ink); position: sticky; top: 0; z-index: 30;
 }
 
-.brand { display: flex; align-items: center; gap: 10px; min-width: 190px; }
-.brandmark { width: 39px; height: 39px; border-radius: 5px 14px 5px 14px; background: var(--red); color: white; display: grid; place-items: center; transform: rotate(-4deg); }
-.brandmark span { font-family: Georgia, serif; font-size: 25px; font-weight: 800; transform: rotate(4deg); }
-.brand > div:last-child { display: flex; flex-direction: column; line-height: 1; }
-.brand strong { letter-spacing: .16em; font-size: 15px; }
-.brand small { font-family: Georgia, serif; color: var(--red); font-style: italic; margin-top: 4px; font-size: 12px; }
+.brand { border: 0; background: transparent; padding: 0; display: flex; align-items: center; gap: 12px; min-width: 240px; cursor: pointer; text-align: left; }
+.brandLogo { width: 49px; height: 49px; object-fit: contain; display: block; }
+.brand > div { display: flex; align-items: baseline; line-height: 1; gap: 7px; }
+.brand strong { font-family: "Sokol Tyrš", Impact, sans-serif; letter-spacing: .025em; font-size: 27px; font-weight: 400; }
+.brandSlash { color: var(--red); font-weight: 900; font-size: 19px; }
+.brand small { font-weight: 800; letter-spacing: .04em; font-size: 10px; }
 
 .mainnav { align-self: stretch; display: flex; gap: 28px; }
-.mainnav button { border: 0; background: transparent; color: #656560; padding: 0 2px; position: relative; cursor: pointer; }
+.mainnav button { border: 0; background: transparent; color: #4d4d49; padding: 0 2px; position: relative; cursor: pointer; font-weight: 700; font-size: 12px; }
 .mainnav button.active { color: var(--ink); font-weight: 700; }
-.mainnav button.active::after { content: ""; height: 3px; background: var(--red); position: absolute; left: 0; right: 0; bottom: 0; }
+.mainnav button.active::after { content: ""; height: 5px; background: var(--red); position: absolute; left: 0; right: 0; bottom: 0; }
 .headerActions { margin-left: auto; display: flex; align-items: center; gap: 14px; }
 .uploadButton, .primary { border: 0; background: var(--red); color: white; border-radius: 7px; padding: 10px 15px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 7px #9d182526; }
 .uploadButton:hover, .primary:hover { background: var(--red-dark); }
 .avatar { width: 37px; height: 37px; border-radius: 50%; border: 0; background: #282827; color: white; font-weight: 700; cursor: pointer; }
 .icon { display: inline-grid; place-items: center; min-width: 16px; }
 
-.processHeader { background: var(--paper); padding: 20px 32px 0; border-bottom: 1px solid var(--line); }
+.landing {
+  background: #fff;
+  padding: 72px clamp(24px, 7vw, 112px) 0;
+  scroll-margin-top: 76px;
+  overflow: hidden;
+}
+
+.heroGrid {
+  max-width: 1380px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(420px, .8fr);
+  gap: clamp(48px, 8vw, 130px);
+  align-items: center;
+  min-height: 570px;
+}
+
+.heroKicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.heroKicker span { width: 46px; height: 6px; background: var(--red); display: inline-block; }
+.heroCopy h1 { font-family: "Sokol Tyrš", Impact, sans-serif; font-weight: 400; text-transform: uppercase; font-size: clamp(68px, 8vw, 125px); line-height: .78; letter-spacing: -.025em; margin: 35px 0 30px; }
+.heroCopy h1 em { font-family: "Sokol Fügner", "Sokol Tyrš", Impact, sans-serif; color: var(--red); font-style: normal; letter-spacing: -.015em; }
+.heroLead { font-size: clamp(16px, 1.45vw, 21px); line-height: 1.5; max-width: 660px; margin: 0; }
+.heroActions { display: flex; align-items: center; gap: 12px; margin-top: 34px; }
+.heroActions button { min-height: 50px; padding: 0 20px; border-radius: 0; font-weight: 800; cursor: pointer; }
+.heroPrimary { background: var(--red); color: white; border: 2px solid var(--red); }
+.heroPrimary:hover { background: var(--ink); border-color: var(--ink); }
+.heroPrimary span { font-size: 18px; margin-left: 18px; }
+.heroSecondary { background: white; border: 2px solid var(--ink); }
+.heroSecondary:hover { background: var(--ink); color: white; }
+.heroTrust { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 42px; padding-top: 16px; border-top: 1px solid #bdbdb8; }
+.heroTrust span { display: flex; gap: 7px; align-items: center; font-size: 10px; font-weight: 700; }
+.heroTrust b { font-family: "Sokol Fügner", monospace; color: var(--red); font-size: 18px; font-weight: 400; }
+
+.heroVisual {
+  min-height: 530px;
+  background: var(--red);
+  color: white;
+  padding: 24px;
+  position: relative;
+  box-shadow: 26px 26px 0 var(--ink);
+}
+
+.visualTopline { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid white; padding-bottom: 13px; font-size: 10px; font-weight: 800; letter-spacing: .1em; }
+.visualTopline b { font-family: "Sokol Fügner", monospace; font-size: 22px; font-weight: 400; }
+.visualDocument { background: white; color: var(--ink); margin-top: 22px; min-height: 390px; padding: 27px; }
+.docMiniHead { display: flex; justify-content: space-between; align-items: center; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.docMiniHead b { background: var(--ink); color: white; padding: 5px 8px; }
+.visualDocument h2 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: clamp(40px, 4vw, 62px); line-height: .86; margin: 24px 0 18px; }
+.visualRule { display: grid; gap: 4px; width: 78px; margin-bottom: 27px; }
+.visualRule i:first-child { height: 7px; background: var(--ink); }
+.visualRule i:last-child { height: 3px; background: var(--ink); }
+.miniParagraph { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; border-top: 1px solid #cfcfca; padding-top: 14px; font-size: 11px; line-height: 1.45; }
+.miniParagraph > b { font-family: "Sokol Fügner", monospace; color: var(--red); font-size: 20px; font-weight: 400; }
+.miniParagraph > i { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; background: var(--red); color: white; font-style: normal; font-size: 9px; font-weight: 800; }
+.miniProposal { background: var(--ink); color: white; padding: 15px; margin: 20px 0 -47px 34px; box-shadow: 8px 8px 0 white, 10px 10px 0 var(--ink); }
+.miniProposal small { color: var(--red); font-weight: 900; letter-spacing: .08em; }
+.miniProposal p { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-size: 23px; line-height: .95; margin: 9px 0 14px; }
+.miniProposal > div { display: flex; justify-content: space-between; font-size: 9px; }
+.miniProposal > div b { color: var(--red); }
+.visualStamp { position: absolute; right: -36px; bottom: -28px; width: 116px; height: 116px; display: grid; place-items: center; text-align: center; border-radius: 50%; background: white; color: var(--red); border: 4px solid var(--red); outline: 5px solid white; transform: rotate(-9deg); font-family: "Sokol Tyrš", Impact, sans-serif; font-size: 20px; line-height: .88; }
+.doubleLine { max-width: 1380px; margin: 76px auto 0; height: 13px; border-top: 7px solid var(--ink); border-bottom: 3px solid var(--ink); }
+
+.howSection {
+  padding: 95px clamp(24px, 7vw, 112px);
+  background: #f2f2ef;
+  scroll-margin-top: 76px;
+}
+
+.sectionHeader { max-width: 1380px; margin: 0 auto 45px; display: grid; grid-template-columns: .5fr 1fr 1fr; gap: 40px; align-items: start; }
+.sectionHeader > div { display: flex; align-items: center; gap: 12px; }
+.sectionIndex { font-family: "Sokol Fügner", monospace; font-size: 36px; color: var(--red); }
+.sectionHeader > div p { font-size: 10px; font-weight: 900; letter-spacing: .09em; }
+.sectionHeader h2 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: clamp(48px, 5.5vw, 78px); line-height: .84; margin: 0; }
+.sectionHeader > p { font-size: 16px; line-height: 1.6; max-width: 440px; margin: 5px 0 0; }
+.howSteps { max-width: 1380px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); border: 2px solid var(--ink); }
+.howSteps article { min-height: 285px; background: white; padding: 25px; border-right: 1px solid var(--ink); position: relative; }
+.howSteps article:last-child { border-right: 0; }
+.howSteps article.highlightStep { background: var(--red); color: white; }
+.stepNumber { font-family: "Sokol Fügner", monospace; font-size: 23px; color: var(--red); }
+.highlightStep .stepNumber { color: white; }
+.stepIcon { font-family: "Sokol Fügner", monospace; font-size: 46px; margin: 25px 0 22px; min-height: 52px; }
+.howSteps h3 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-size: 25px; line-height: .95; font-weight: 400; margin: 0 0 13px; }
+.howSteps p { font-size: 12px; line-height: 1.55; margin: 0; color: #555552; }
+.highlightStep p { color: white; }
+.howCta { max-width: 1380px; margin: 30px auto 0; padding: 19px 0; border-top: 6px solid var(--ink); border-bottom: 2px solid var(--ink); display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.howCta p { margin: 0; }
+.howCta button { background: var(--ink); color: white; border: 0; padding: 13px 18px; font-weight: 800; cursor: pointer; }
+.howCta button:hover { background: var(--red); }
+.howCta button span { margin-left: 20px; }
+
+.processHeader { background: var(--paper); padding: 28px 32px 0; border-top: 8px solid var(--ink); border-bottom: 1px solid var(--line); scroll-margin-top: 76px; }
 .backline { display: flex; gap: 9px; color: #898985; font-size: 12px; margin-bottom: 18px; }
 .backline b { color: #bbb; }
 .processTitleRow { display: flex; align-items: flex-end; justify-content: space-between; max-width: 1220px; }
 .eyebrow { color: var(--red); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px; }
 .liveDot { display: inline-block; width: 7px; height: 7px; background: var(--red); border-radius: 50%; margin-right: 6px; box-shadow: 0 0 0 4px #c61f2f1c; }
-h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw, 39px); line-height: 1.1; margin: 0; letter-spacing: -.02em; }
+.processTitleRow h1 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-size: clamp(34px, 3.8vw, 56px); font-weight: 400; line-height: .9; margin: 0; letter-spacing: 0; }
 .processTitleRow p { color: var(--muted); margin: 8px 0 0; }
 .deadline { border-left: 1px solid var(--line); padding-left: 24px; display: grid; min-width: 180px; }
 .deadline small { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
@@ -75,7 +186,7 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw,
 .outline, .discussion { background: #f7f6f2; }
 .outline { border-right: 1px solid var(--line); padding: 20px 15px; }
 .asideHead { display: flex; justify-content: space-between; align-items: center; padding: 0 7px 13px; }
-.asideHead b { font-family: Georgia, serif; font-size: 16px; }
+.asideHead b { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: 19px; }
 .asideHead button { border: 1px solid var(--line); background: white; border-radius: 4px; width: 25px; height: 25px; cursor: pointer; }
 .progressBox { background: white; border: 1px solid #e5e4df; padding: 11px; border-radius: 6px; margin-bottom: 15px; }
 .progressBox > div:first-child { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
@@ -102,10 +213,10 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw,
 .docToolbar small { font-size: 8px; }
 .paper { max-width: 760px; min-height: 740px; background: var(--paper); margin: 0 auto; padding: clamp(30px, 5vw, 64px); border: 1px solid #deddd8; box-shadow: 0 8px 28px #34332e10; }
 .paperLabel { color: var(--red); letter-spacing: .15em; font-size: 10px; font-weight: 800; }
-.paper h2 { font-family: Georgia, serif; font-size: clamp(25px, 3vw, 34px); line-height: 1.15; margin: 9px 0 18px; }
+.paper h2 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: clamp(34px, 4vw, 48px); line-height: .92; margin: 9px 0 18px; }
 .rule { width: 42px; height: 3px; background: var(--red); margin-bottom: 42px; }
 .clauseMeta { display: flex; gap: 13px; align-items: baseline; margin-bottom: 16px; }
-.clauseMeta b { font-family: Georgia, serif; font-size: 23px; }
+.clauseMeta b { font-family: "Sokol Fügner", monospace; font-size: 27px; font-weight: 400; }
 .clauseMeta span { color: var(--muted); font-size: 12px; }
 .paragraph { position: relative; display: grid; grid-template-columns: 32px 1fr; gap: 8px; padding: 13px 28px 13px 4px; border-left: 3px solid transparent; border-radius: 0 5px 5px 0; }
 .paragraph:hover, .activeParagraph { background: #f9f5eb; border-left-color: #dfcfae; }
@@ -135,7 +246,7 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw,
 .discussionTabs button.active::after { content: ""; position: absolute; bottom: -1px; left: 10px; right: 10px; height: 3px; background: var(--red); }
 .discussionTabs span { display: inline-grid; place-items: center; min-width: 18px; height: 18px; background: #ecebe7; border-radius: 10px; margin-left: 4px; font-size: 9px; }
 .panelIntro { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 12px; }
-.panelIntro b { font-family: Georgia, serif; font-size: 16px; }
+.panelIntro b { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: 19px; }
 .panelIntro p { margin: 3px 0 0; font-size: 10px; color: var(--muted); }
 .panelIntro .primary { padding: 8px 10px; font-size: 10px; }
 .proposalList { height: 780px; overflow-y: auto; padding: 0 12px 40px; }
@@ -146,7 +257,7 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw,
 .status.green { color: var(--green); background: #e1efe6; }
 .status.gray { color: #6f706e; background: #ececea; }
 .sectionRef { color: var(--muted); font-size: 9px; }
-.proposalCard h3 { font-family: Georgia, serif; font-size: 17px; line-height: 1.2; margin: 10px 0 6px; }
+.proposalCard h3 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: 20px; line-height: 1; margin: 10px 0 6px; }
 .proposalText { color: #555551; font-size: 11px; line-height: 1.55; margin: 0 0 12px; }
 .resolution { padding: 8px 10px; border-radius: 5px; margin: 8px 0 12px; border-left: 3px solid; }
 .resolution.green { background: #edf5f0; border-color: var(--green); }
@@ -182,7 +293,7 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw,
 .modal { width: min(480px, 100%); background: var(--paper); border-radius: 11px; padding: 32px; position: relative; box-shadow: 0 25px 80px #0007; }
 .modalClose { position: absolute; top: 12px; right: 14px; border: 0; background: transparent; font-size: 25px; color: var(--muted); cursor: pointer; }
 .modalIcon { width: 50px; height: 50px; display: grid; place-items: center; border-radius: 50%; background: #f5e7e8; color: var(--red); font-size: 25px; }
-.modal h2 { font-family: Georgia, serif; font-size: 27px; margin: 15px 0 8px; }
+.modal h2 { font-family: "Sokol Tyrš", Impact, sans-serif; text-transform: uppercase; font-weight: 400; font-size: 34px; line-height: .95; margin: 15px 0 8px; }
 .modal > p { color: var(--muted); line-height: 1.55; font-size: 12px; }
 .dropzone { display: grid; place-items: center; border: 1.5px dashed #c8c3b8; border-radius: 8px; padding: 28px; margin-top: 20px; cursor: pointer; background: var(--cream); }
 .dropzone:hover { border-color: var(--red); }
@@ -202,6 +313,12 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw,
 .mobileSwitch { display: none; }
 
 @media (max-width: 1080px) {
+  .heroGrid { grid-template-columns: 1fr 390px; gap: 45px; }
+  .heroCopy h1 { font-size: clamp(64px, 9vw, 94px); }
+  .sectionHeader { grid-template-columns: .35fr 1fr 1fr; }
+  .howSteps { grid-template-columns: repeat(2, 1fr); }
+  .howSteps article:nth-child(2) { border-right: 0; }
+  .howSteps article:nth-child(-n+2) { border-bottom: 1px solid var(--ink); }
   .workspace { grid-template-columns: 220px minmax(430px, 1fr); }
   .discussion { position: fixed; top: 70px; right: 0; bottom: 0; width: 380px; z-index: 25; box-shadow: -8px 0 28px #0002; transform: translateX(100%); transition: transform .25s; }
   .discussion.mobileVisible { transform: translateX(0); }
@@ -210,9 +327,35 @@ h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(27px, 3vw,
 
 @media (max-width: 760px) {
   .topbar { height: 58px; padding: 0 14px; }
-  .brand { min-width: auto; }
-  .brandmark { width: 33px; height: 33px; }
+  .brand { min-width: auto; gap: 7px; }
+  .brandLogo { width: 36px; height: 36px; }
+  .brand strong { font-size: 21px; }
+  .brand small, .brandSlash { display: none; }
   .mainnav, .uploadButton { display: none; }
+  .landing { padding: 38px 16px 0; scroll-margin-top: 58px; }
+  .heroGrid { display: block; min-height: auto; }
+  .heroCopy h1 { font-size: clamp(54px, 18vw, 72px); margin: 29px 0 23px; }
+  .heroLead { font-size: 15px; }
+  .heroActions { display: grid; grid-template-columns: 1fr; }
+  .heroActions button { width: 100%; }
+  .heroTrust { display: grid; gap: 9px; margin-top: 28px; }
+  .heroVisual { margin: 55px 12px 0 0; min-height: 470px; padding: 18px; box-shadow: 12px 12px 0 var(--ink); }
+  .visualDocument { min-height: 345px; padding: 20px; }
+  .visualDocument h2 { font-size: 47px; }
+  .miniProposal { margin-left: 14px; }
+  .visualStamp { width: 92px; height: 92px; right: -11px; bottom: -33px; font-size: 16px; }
+  .doubleLine { margin-top: 70px; }
+  .howSection { padding: 70px 16px; scroll-margin-top: 58px; }
+  .sectionHeader { display: block; margin-bottom: 30px; }
+  .sectionHeader h2 { font-size: 58px; margin: 25px 0; }
+  .sectionHeader > p { font-size: 14px; }
+  .howSteps { grid-template-columns: 1fr; }
+  .howSteps article { border-right: 0; border-bottom: 1px solid var(--ink); min-height: 235px; }
+  .howSteps article:nth-child(2) { border-right: 0; }
+  .howSteps article:last-child { border-bottom: 0; }
+  .howCta { display: block; }
+  .howCta p { line-height: 1.5; }
+  .howCta button { width: 100%; margin-top: 16px; }
   .processHeader { padding: 16px 16px 0; }
   .backline { margin-bottom: 12px; }
   .processTitleRow { align-items: start; gap: 12px; }
