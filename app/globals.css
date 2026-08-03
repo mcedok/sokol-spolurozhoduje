@@ -257,7 +257,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
 
 @media (max-width: 760px) {
   body { font-size: 14px; }
-  .topbar { height: 58px; padding: 0 12px; gap: 10px; }
+  .topbar { height: auto; min-height: 58px; padding: 6px 12px; gap: 7px 10px; flex-wrap: wrap; }
   .brand img { width: 34px; height: 34px; }
   .brand span { font-size: 0; }
   .brand strong { font-size: 21px; }
@@ -265,7 +265,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
   .topbar nav button { padding: 0 8px; font-size: 11px; }
   .userBox { display: none; }
   .userMenu { gap: 3px; }
-  .userMenu.signedIn .userAvatar, .userMenu.signedIn .userIdentity { display: none; }
+  .userMenu.signedIn { flex: 1 1 100%; order: 3; margin-left: 0; justify-content: flex-end; padding-top: 5px; border-top: 1px solid var(--line); }
+  .userMenu.signedIn .userAvatar { width: 28px; height: 28px; font-size: 9px; }
+  .userMenu.signedIn .userIdentity { margin-right: auto; }
+  .userMenu.signedIn .userIdentity strong { max-width: 130px; font-size: 10px; }
+  .userMenu.signedIn .userIdentity small { font-size: 9px; }
   .userMenuActions { gap: 2px; }
   .userMenuActions button { padding: 6px 5px; font-size: 9px; }
   .userMenu.signedOut .primaryButton { padding: 8px; font-size: 10px; }

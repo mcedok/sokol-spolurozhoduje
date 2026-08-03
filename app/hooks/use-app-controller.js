@@ -12,7 +12,21 @@ import { createUserService } from "../services/user-service.js";
 
 export const SESSION_STORAGE_KEY = "sokol-spolurozhoduje-session-id";
 
-export function useAppController() {
+function createDefaultServices() {
+  const repository = createBrowserRepository({ storage: window.localStorage });
+  const audit = createAuditService(repository, Date.now);
+  const auth = createAuthService({
+    repository,
+    audit,
+    cryptoAdapter: createCryptoAdapter(window.crypto),
+    now: Date.now,
+  });
+  const normService = createNormService({ repository, auth, audit, fileRepository, now: Date.now });
+  const userService = createUserService({ repository, auth, audit, now: Date.now });
+  return { repository, audit, auth, normService, userService };
+}
+
+export function useAppController({ createServices = createDefaultServices } = {}) {
   const [state, setState] = useState(() => createInitialState());
   const [session, setSession] = useState(null);
   const [view, setView] = useState("landing");
@@ -54,37 +68,40 @@ export function useAppController() {
 
   useEffect(() => {
     let active = true;
-    const repository = createBrowserRepository({ storage: window.localStorage });
-    const audit = createAuditService(repository, Date.now);
-    const auth = createAuthService({
-      repository,
-      audit,
-      cryptoAdapter: createCryptoAdapter(window.crypto),
-      now: Date.now,
-    });
-    const normService = createNormService({ repository, auth, audit, fileRepository, now: Date.now });
-    const userService = createUserService({ repository, auth, audit, now: Date.now });
-    const bundle = { repository, audit, auth, normService, userService };
-    servicesRef.current = bundle;
+    const bundle = createServices();
+    servicesRef.current = null;
+    setServices(null);
+    setReady(false);
 
-    void auth.ensureDemoCredentials().then(() => {
+    void bundle.auth.ensureDemoCredentials().then(() => {
       if (!active) return;
+      servicesRef.current = bundle;
       setServices(bundle);
       refresh();
       setReady(true);
     }).catch((error) => {
       if (!active) return;
-      setServices(bundle);
-      refresh();
-      flash(error?.message || "Modelové účty se nepodařilo připravit.", "error");
-      setReady(true);
+      servicesRef.current = null;
+      setServices(null);
+      setReady(false);
+      setAuthMode(null);
+      flash(
+        `${error?.message || "Modelové účty se nepodařilo připravit."} Načtěte stránku znovu.`,
+        "error",
+      );
     });
 
     return () => {
       active = false;
       if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
     };
-  }, [flash, refresh]);
+  }, [createServices, flash, refresh]);
+
+  const openLogin = useCallback((mode = "login") => {
+    if (!servicesRef.current) return false;
+    setAuthMode(mode);
+    return true;
+  }, []);
 
   const authenticated = useCallback((nextSession) => {
     window.sessionStorage.setItem(SESSION_STORAGE_KEY, nextSession.id);
@@ -123,7 +140,7 @@ export function useAppController() {
   const actions = useMemo(() => ({
     ready,
     setView,
-    openLogin: (mode = "login") => setAuthMode(mode),
+    openLogin,
     closeLogin: () => setAuthMode(null),
     authenticated,
     logout,
@@ -131,7 +148,7 @@ export function useAppController() {
     mutate,
     flash,
     clearFeedback: () => setFeedback(null),
-  }), [authenticated, flash, logout, mutate, ready, refresh]);
+  }), [authenticated, flash, logout, mutate, openLogin, ready, refresh]);
 
   return {
     state,

@@ -31,8 +31,9 @@ describe("UserMenu", () => {
       onProfile,
     }));
 
-    expect(screen.getByText("Petra Sokolová")).toBeInTheDocument();
-    expect(screen.getByText("Superadministrátor")).toBeInTheDocument();
+    expect(screen.getByText("Petra Sokolová").closest(".userIdentity")).toBeInTheDocument();
+    expect(screen.getByText("Superadministrátor").closest(".userIdentity")).toBeInTheDocument();
+    expect(screen.getByText("PS")).toHaveClass("userAvatar");
     await user.click(screen.getByRole("button", { name: "Profil" }));
     await user.click(screen.getByRole("button", { name: "Odhlásit" }));
     expect(onProfile).toHaveBeenCalledOnce();
@@ -41,6 +42,27 @@ describe("UserMenu", () => {
 });
 
 describe("useAppController", () => {
+  it("keeps services and login unavailable when demo credential initialization fails", async () => {
+    const initializationError = new Error("seed failed");
+    const createServices = vi.fn(() => ({
+      repository: { read: vi.fn() },
+      auth: { ensureDemoCredentials: vi.fn().mockRejectedValue(initializationError) },
+    }));
+    const { result } = renderHook(() => useAppController({ createServices }));
+
+    await waitFor(() => expect(result.current.feedback?.kind).toBe("error"));
+    expect(result.current.actions.ready).toBe(false);
+    expect(result.current.services).toBeNull();
+
+    let opened;
+    act(() => {
+      opened = result.current.actions.openLogin();
+    });
+    expect(opened).toBe(false);
+    expect(result.current.authMode).toBeNull();
+    expect(result.current.feedback.message).toMatch(/načtěte stránku znovu/i);
+  });
+
   it("removes an invalid persisted session and initializes exact demo accounts", async () => {
     sessionStorage.setItem(SESSION_STORAGE_KEY, "invalid-session");
     const { result } = renderHook(() => useAppController());
