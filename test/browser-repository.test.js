@@ -14,12 +14,32 @@ describe("browser repository", () => {
     });
   });
 
+  it("preserves an existing visibility mode during migration", () => {
+    localStorage.setItem(
+      "sokol-spolurozhoduje-pilot-v2",
+      JSON.stringify({ schemaVersion: 3, norms: [{ id: "n1", visibilityMode: "title-only" }] }),
+    );
+
+    const state = createBrowserRepository({ storage: localStorage, now: () => 1 }).read();
+
+    expect(state.norms[0].visibilityMode).toBe("title-only");
+    expect(JSON.parse(localStorage.getItem("sokol-spolurozhoduje-pilot-v2")).norms[0].visibilityMode).toBe("title-only");
+  });
+
   it("returns a recoverable initial state without deleting malformed storage", () => {
     localStorage.setItem("sokol-spolurozhoduje-pilot-v2", "{not-json");
 
     const state = createBrowserRepository({ storage: localStorage, now: () => 1 }).read();
 
     expect(state).toMatchObject({ schemaVersion: 3, recoveryRequired: true });
+    expect(localStorage.getItem("sokol-spolurozhoduje-pilot-v2")).toBe("{not-json");
+  });
+
+  it("refuses updates during recovery and preserves malformed storage", () => {
+    localStorage.setItem("sokol-spolurozhoduje-pilot-v2", "{not-json");
+    const repository = createBrowserRepository({ storage: localStorage, now: () => 1 });
+
+    expect(() => repository.update(() => {})).toThrow(/reset/i);
     expect(localStorage.getItem("sokol-spolurozhoduje-pilot-v2")).toBe("{not-json");
   });
 

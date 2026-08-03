@@ -7,7 +7,7 @@ function migrateNorm(norm) {
   return {
     ...norm,
     ownerAdminId: norm.ownerAdminId || DEFAULT_OWNER_ADMIN_ID,
-    visibilityMode: "public-detail",
+    visibilityMode: norm.visibilityMode || "public-detail",
   };
 }
 
@@ -43,7 +43,11 @@ export function createBrowserRepository({ storage }) {
   }
 
   function update(mutator) {
-    const state = structuredClone(read());
+    const current = read();
+    if (current.recoveryRequired) {
+      throw new Error("Data recovery requires reset.");
+    }
+    const state = structuredClone(current);
     mutator(state);
     storage.setItem(STORAGE_KEY, JSON.stringify(state));
     return state;
