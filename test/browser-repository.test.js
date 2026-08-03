@@ -26,6 +26,28 @@ describe("browser repository", () => {
     expect(JSON.parse(localStorage.getItem("sokol-spolurozhoduje-pilot-v2")).norms[0].visibilityMode).toBe("title-only");
   });
 
+  it("migrates per-year norm sequences from historical maxima without lowering a stored counter", () => {
+    localStorage.setItem(
+      "sokol-spolurozhoduje-pilot-v2",
+      JSON.stringify({
+        schemaVersion: 3,
+        norms: [
+          { id: "old-2025", number: "SOKOL-2025-007" },
+          { id: "old-2026", number: "SOKOL-2026-004" },
+          { id: "ignored", number: "OTHER-2026-999" },
+        ],
+        normSequenceByYear: { 2025: 5, 2026: 9 },
+      }),
+    );
+
+    const state = createBrowserRepository({ storage: localStorage }).read();
+
+    expect(state.normSequenceByYear).toEqual({ 2025: 7, 2026: 9 });
+    expect(
+      JSON.parse(localStorage.getItem("sokol-spolurozhoduje-pilot-v2")).normSequenceByYear,
+    ).toEqual({ 2025: 7, 2026: 9 });
+  });
+
   it("returns a recoverable initial state without deleting malformed storage", () => {
     localStorage.setItem("sokol-spolurozhoduje-pilot-v2", "{not-json");
 

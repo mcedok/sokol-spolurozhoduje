@@ -1,4 +1,4 @@
-import { createInitialState } from "../domain/demo-data.js";
+import { createInitialState, deriveNormSequenceByYear } from "../domain/demo-data.js";
 
 const STORAGE_KEY = "sokol-spolurozhoduje-pilot-v2";
 const DEFAULT_OWNER_ADMIN_ID = "user-admin-demo";
@@ -14,12 +14,17 @@ function migrateNorm(norm) {
 function migrateState(value) {
   const initialState = createInitialState();
   const legacyNorms = Array.isArray(value) ? value : value.norms;
+  const norms = (legacyNorms || initialState.norms).map(migrateNorm);
 
   return {
     ...initialState,
     ...(Array.isArray(value) ? {} : value),
     schemaVersion: 3,
-    norms: (legacyNorms || initialState.norms).map(migrateNorm),
+    norms,
+    normSequenceByYear: deriveNormSequenceByYear(
+      norms,
+      Array.isArray(value) ? undefined : value.normSequenceByYear,
+    ),
     users: Array.isArray(value.users) ? value.users : initialState.users,
     challenges: Array.isArray(value.challenges) ? value.challenges : initialState.challenges,
     sessions: Array.isArray(value.sessions) ? value.sessions : initialState.sessions,

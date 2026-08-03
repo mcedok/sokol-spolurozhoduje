@@ -210,6 +210,26 @@ const DEMO_NORMS = [
   },
 ];
 
+export function deriveNormSequenceByYear(norms, stored = {}) {
+  const sequenceByYear = {};
+  for (const [year, value] of Object.entries(stored || {})) {
+    const sequence = Number(value);
+    if (/^\d{4}$/.test(year) && Number.isSafeInteger(sequence) && sequence >= 0) {
+      sequenceByYear[year] = sequence;
+    }
+  }
+  for (const norm of norms || []) {
+    const match = /^SOKOL-(\d{4})-(\d+)$/.exec(norm?.number || "");
+    if (!match) continue;
+    const [, year, rawSequence] = match;
+    const sequence = Number(rawSequence);
+    if (Number.isSafeInteger(sequence)) {
+      sequenceByYear[year] = Math.max(sequenceByYear[year] || 0, sequence);
+    }
+  }
+  return sequenceByYear;
+}
+
 export function createInitialState() {
   return structuredClone({
     schemaVersion: 3,
@@ -218,6 +238,7 @@ export function createInitialState() {
     sessions: [],
     auditEvents: [],
     norms: DEMO_NORMS,
+    normSequenceByYear: deriveNormSequenceByYear(DEMO_NORMS),
     votes: {},
   });
 }

@@ -162,27 +162,22 @@ export function createNormService({ repository, auth, audit, fileRepository, now
     if (!title) throw new NormServiceError("INVALID_NORM");
     if (file && file.size > MAX_FILE_SIZE) throw new NormServiceError("FILE_TOO_LARGE");
 
-    const state = repository.read();
     const timestamp = now();
     const year = new Date(timestamp).getFullYear();
-    const sequence =
-      Math.max(
-        0,
-        ...state.norms
-          .filter((norm) => norm.number?.startsWith(`SOKOL-${year}-`))
-          .map((norm) => Number.parseInt(norm.number.split("-").at(-1), 10) || 0),
-      ) + 1;
+    const status = normalizeText(input?.status) || "Koncept";
     const norm = {
-      id: `norm-${timestamp}-${sequence}`,
-      number: `SOKOL-${year}-${String(sequence).padStart(3, "0")}`,
+      id: uniqueId("norm"),
+      number: null,
       title,
       category: normalizeText(input?.category),
       version: normalizeText(input?.version),
-      status: normalizeText(input?.status) || "Koncept",
-      commentsOpen: input?.commentsOpen ?? input?.status === "K připomínkování",
+      status,
+      commentsOpen: CLOSED_STATUSES.has(status)
+        ? false
+        : input?.commentsOpen ?? status === "K připomínkování",
       publishedAt:
         normalizeText(input?.publishedAt) ||
-        (input?.status === "K připomínkování" ? new Date(timestamp).toISOString().slice(0, 10) : ""),
+        (status === "K připomínkování" ? new Date(timestamp).toISOString().slice(0, 10) : ""),
       deadline: normalizeText(input?.deadline),
       submittedBy: normalizeText(input?.submittedBy),
       responsible: normalizeText(input?.responsible),
@@ -207,20 +202,35 @@ export function createNormService({ repository, auth, audit, fileRepository, now
 
     if (file && file.size > 0) {
       const fileId = `file-${norm.id}`;
-      await fileRepository.storeFile(fileId, file);
+      try {
+        await fileRepository.storeFile(fileId, file);
+      } catch (error) {
+        try {
+          await fileRepository.removeFile(fileId);
+        } catch {
+          // Preserve the original storage error; a failed cleanup is best-effort in this local pilot.
+        }
+        throw error;
+      }
       norm.file = { id: fileId, name: file.name, size: file.size, type: file.type };
     }
 
+    let state;
     try {
-      repository.update((draft) => {
+      state = repository.update((draft) => {
+        const sequence = Number(draft.normSequenceByYear?.[year] || 0) + 1;
+        draft.normSequenceByYear ||= {};
+        draft.normSequenceByYear[year] = sequence;
+        norm.number = `SOKOL-${year}-${String(sequence).padStart(3, "0")}`;
         draft.norms.push(norm);
       });
     } catch (error) {
       await fileRepository.removeFile(norm.file?.id);
       throw error;
     }
-    recordManagement(actor.id, "norm.created", norm.id, { number: norm.number });
-    return { norm, message: `Norma ${norm.number} byla založena.` };
+    const createdNorm = findNorm(state, norm.id);
+    recordManagement(actor.id, "norm.created", norm.id, { number: createdNorm.number });
+    return { norm: createdNorm, message: `Norma ${createdNorm.number} byla založena.` };
   }
 
   async function update(sessionId, normId, patch = {}) {
@@ -229,6 +239,9 @@ export function createNormService({ repository, auth, audit, fileRepository, now
     const changes = Object.fromEntries(
       Object.entries(patch).filter(([key]) => UPDATE_FIELDS.has(key)),
     );
+    if (CLOSED_STATUSES.has(changes.status ?? current.status)) {
+      changes.commentsOpen = false;
+    }
     const state = repository.update((draft) => {
       Object.assign(findNorm(draft, normId), changes);
     });
@@ -280,7 +293,9 @@ export function createNormService({ repository, auth, audit, fileRepository, now
     const actor = participatingActor(sessionId, "norm.add_contribution", normId);
     const state = repository.read();
     const norm = findNorm(state, normId);
-    if (!norm.commentsOpen) throw new NormServiceError("COMMENTS_CLOSED");
+    if (!norm.commentsOpen || CLOSED_STATUSES.has(norm.status)) {
+      throw new NormServiceError("COMMENTS_CLOSED");
+    }
     const title = normalizeText(input?.title);
     const text = normalizeText(input?.text);
     if (!title || !text) throw new NormServiceError("INVALID_CONTRIBUTION");

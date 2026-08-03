@@ -187,6 +187,7 @@ describe("norm service", () => {
       file: { name: "navrh.pdf", size: 2048, type: "application/pdf" },
     });
     expect(files.get(result.norm.file.id)).toBe(file);
+    expect(repository.read().normSequenceByYear).toMatchObject({ 2026: 4 });
     expect(repository.read().auditEvents).toContainEqual(
       expect.objectContaining({
         actorUserId: adminSession.userId,
@@ -279,6 +280,38 @@ describe("norm service", () => {
     await expect(norms.addContribution("session-member", "norm-001", contributionInput())).rejects.toMatchObject({ code: "COMMENTS_CLOSED" });
   });
 
+  it.each(["Schváleno", "Neschváleno", "Archivováno"])(
+    "normalizes commentsOpen to false when the owner updates status to %s",
+    async (status) => {
+      const { adminSession, norms, repository } = harness;
+
+      const result = await norms.update(adminSession.id, "norm-001", {
+        status,
+        commentsOpen: true,
+      });
+
+      expect(result.norm).toMatchObject({ status, commentsOpen: false });
+      expect(repository.read().norms[0]).toMatchObject({ status, commentsOpen: false });
+    },
+  );
+
+  it.each(["Schváleno", "Neschváleno", "Archivováno"])(
+    "rejects a contribution to %s even when persisted commentsOpen is stale true",
+    async (status) => {
+      const { norms, repository } = harness;
+      repository.update((state) => {
+        state.norms[0].status = status;
+        state.norms[0].commentsOpen = true;
+      });
+      const before = repository.read().norms[0].submissions.length;
+
+      await expect(
+        norms.addContribution("session-member", "norm-001", contributionInput()),
+      ).rejects.toMatchObject({ code: "COMMENTS_CLOSED" });
+      expect(repository.read().norms[0].submissions).toHaveLength(before);
+    },
+  );
+
   it("keeps exactly one current submission vote per user and replaces its score contribution", async () => {
     const { norms, repository } = harness;
 
@@ -361,5 +394,110 @@ describe("norm service", () => {
     await norms.remove(adminSession.id, "norm-001");
 
     expect(repository.read().votes).toEqual({ "need:member-verified:norm-0010": "no" });
+  });
+
+  it("continues the historical sequence after the highest numbered norm is deleted", async () => {
+    const { adminSession, norms, repository } = harness;
+    const first = await norms.create(adminSession.id, normInput({ title: "Čtvrtá norma" }));
+    await norms.remove(adminSession.id, first.norm.id);
+
+    const second = await norms.create(adminSession.id, normInput({ title: "Pátá norma" }));
+
+    expect(first.norm.number).toBe("SOKOL-2026-004");
+    expect(second.norm.number).toBe("SOKOL-2026-005");
+    expect(repository.read().normSequenceByYear).toMatchObject({ 2026: 5 });
+  });
+
+  it("reserves distinct numbers when concurrent creates resume from delayed file stores", async () => {
+    const { adminSession, audit, auth, clock, repository } = harness;
+    const files = new Map();
+    const releases = [];
+    const delayedFileRepository = {
+      storeFile(id, file) {
+        return new Promise((resolve) => {
+          releases.push(() => {
+            files.set(id, file);
+            resolve();
+          });
+        });
+      },
+      async readFile(id) {
+        return files.get(id);
+      },
+      async removeFile(id) {
+        if (id) files.delete(id);
+      },
+    };
+    const concurrentNorms = createNormService({
+      repository,
+      auth,
+      audit,
+      fileRepository: delayedFileRepository,
+      now: clock.now,
+    });
+    const firstFile = { name: "first.pdf", size: 10, type: "application/pdf" };
+    const secondFile = { name: "second.pdf", size: 20, type: "application/pdf" };
+
+    const firstPromise = concurrentNorms.create(
+      adminSession.id,
+      normInput({ title: "Souběžná první" }),
+      firstFile,
+    );
+    const secondPromise = concurrentNorms.create(
+      adminSession.id,
+      normInput({ title: "Souběžná druhá" }),
+      secondFile,
+    );
+    expect(releases).toHaveLength(2);
+    releases[1]();
+    releases[0]();
+    const created = await Promise.all([firstPromise, secondPromise]);
+
+    expect(created.map((result) => result.norm.number).sort()).toEqual([
+      "SOKOL-2026-004",
+      "SOKOL-2026-005",
+    ]);
+    expect(new Set(created.map((result) => result.norm.id))).toHaveProperty("size", 2);
+    expect(new Set(created.map((result) => result.norm.file.id))).toHaveProperty("size", 2);
+    expect(files.size).toBe(2);
+    expect(repository.read().normSequenceByYear).toMatchObject({ 2026: 5 });
+  });
+
+  it("leaves no norm, sequence reservation or orphaned file when file storage fails", async () => {
+    const { adminSession, audit, auth, clock, repository } = harness;
+    const files = new Map();
+    const failingFileRepository = {
+      async storeFile(id, file) {
+        files.set(id, file);
+        throw new Error("file store failed");
+      },
+      async readFile(id) {
+        return files.get(id);
+      },
+      async removeFile(id) {
+        if (id) files.delete(id);
+      },
+    };
+    const failingNorms = createNormService({
+      repository,
+      auth,
+      audit,
+      fileRepository: failingFileRepository,
+      now: clock.now,
+    });
+    const before = repository.read();
+
+    await expect(
+      failingNorms.create(
+        adminSession.id,
+        normInput({ title: "Neuložená norma" }),
+        { name: "broken.pdf", size: 10, type: "application/pdf" },
+      ),
+    ).rejects.toThrow("file store failed");
+
+    const after = repository.read();
+    expect(after.norms).toEqual(before.norms);
+    expect(after.normSequenceByYear).toEqual(before.normSequenceByYear);
+    expect(files.size).toBe(0);
   });
 });
