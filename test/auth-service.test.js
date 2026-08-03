@@ -208,6 +208,7 @@ describe("auth service", () => {
     const actor = await auth.loginWithPassword(MODEL_CREDENTIALS.superadmin);
 
     const delivery = await auth.createPasswordSetup(actor.id, invitedAdmin().id);
+    expect(delivery.kind).toBe("password_setup");
     await expect(
       auth.completePasswordSetup({ token: delivery.demoToken, password: "short" }),
     ).rejects.toMatchObject({ code: "WEAK_PASSWORD" });
