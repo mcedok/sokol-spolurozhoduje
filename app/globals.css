@@ -50,6 +50,13 @@ button { color: inherit; }
 .userBox { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .userBox > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: white; font-weight: 700; font-size: 12px; }
 .userBox small { color: var(--muted); }
+.userMenu { margin-left: auto; display: flex; align-items: center; gap: 9px; }
+.userAvatar { width: 34px; height: 34px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: white; font-weight: 800; font-size: 11px; }
+.userIdentity { display: grid; min-width: 0; }
+.userIdentity strong { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.userIdentity small { color: var(--muted); font-size: 10px; }
+.userMenuActions { display: flex; gap: 4px; }
+.userMenuActions button { border: 1px solid var(--line); background: white; border-radius: 4px; padding: 7px 8px; cursor: pointer; font-size: 10px; font-weight: 700; }
 
 .hero {
   max-width: 1280px;
@@ -217,8 +224,25 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
 .modal > label { margin-top: 12px; }
 .formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .modalActions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 20px; }
+.authDialog { width: min(620px, 100%); }
+.authDialog > form > p { color: var(--muted); line-height: 1.55; }
+.authDialog .formGrid { margin-top: 17px; }
+.authError { margin: -8px 0 16px; padding: 11px 13px; border-left: 3px solid var(--red); background: #fae9ec; color: #7f1629; line-height: 1.45; font-size: 12px; }
+.authNotice { padding: 11px 13px; background: #edf5f0; color: var(--green) !important; font-size: 12px; }
+.passwordActions { margin-top: 20px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.linkButton { border: 0; background: transparent; padding: 8px 0; color: var(--red); cursor: pointer; font-size: 12px; font-weight: 800; }
+.demoInbox, .demoCredentials { margin-top: 22px; border: 1px solid var(--line); padding: 16px; }
+.demoInbox { border-left: 4px solid var(--red); }
+.demoInboxHeading h3, .demoCredentials h3 { margin: 2px 0 10px; font-size: 16px; }
+.demoInbox ul, .demoCredentials ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.demoInbox li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 8px; border-top: 1px solid var(--line); font-family: "Sokol Fugner", monospace; font-size: 13px; }
+.demoInbox li button { border: 1px solid var(--line); background: white; border-radius: 4px; padding: 7px 9px; cursor: pointer; font-family: Arial, sans-serif; font-size: 10px; font-weight: 800; }
+.demoCredentials { background: var(--canvas); }
+.demoWarning { display: inline-block; margin-bottom: 10px; color: var(--red-dark); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.demoCredentials li { overflow-wrap: anywhere; font-family: "Sokol Fugner", monospace; font-size: 12px; }
 .emptyState { grid-column: 1 / -1; padding: 40px; border: 1px dashed #c6c5be; background: #fafaf8; color: var(--muted); text-align: center; }
 .toast { position: fixed; left: 50%; bottom: 25px; transform: translateX(-50%); z-index: 80; background: var(--ink); color: white; border-radius: 4px; padding: 11px 16px; box-shadow: 0 8px 30px #0004; font-size: 12px; }
+.toast.error { background: #7f1629; }
 
 @media (max-width: 1050px) {
   .normGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -240,6 +264,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
   .topbar nav { gap: 2px; flex: 1; justify-content: center; }
   .topbar nav button { padding: 0 8px; font-size: 11px; }
   .userBox { display: none; }
+  .userMenu { gap: 3px; }
+  .userMenu.signedIn .userAvatar, .userMenu.signedIn .userIdentity { display: none; }
+  .userMenuActions { gap: 2px; }
+  .userMenuActions button { padding: 6px 5px; font-size: 9px; }
+  .userMenu.signedOut .primaryButton { padding: 8px; font-size: 10px; }
   .hero { display: block; padding: 45px 18px 50px; }
   .hero h1 { font-size: 55px; }
   .hero > div > p:not(.kicker) { font-size: 16px; }
@@ -275,6 +304,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
   .resolutionItem { grid-template-columns: 1fr; }
   .adminReply { grid-column: auto; }
   .modal { padding: 26px 18px; }
+  .authBackdrop { padding: 8px; }
+  .authDialog { max-height: calc(100vh - 16px); }
+  .passwordActions { align-items: stretch; flex-direction: column; }
+  .passwordActions .primaryButton { width: 100%; }
+  .demoInbox li { align-items: flex-start; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {

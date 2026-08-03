@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createBrowserRepository } from "./data/browser-repository.js";
+import { useMemo, useState } from "react";
+import { AuthDialog } from "./components/auth/AuthDialog.js";
+import { UserMenu } from "./components/auth/UserMenu.js";
+import { Feedback } from "./components/shared/Feedback.js";
 import * as fileRepository from "./data/file-repository.js";
 import { createInitialState } from "./domain/demo-data.js";
-import { createCryptoAdapter } from "./security/crypto-adapter.js";
-import { createAuditService } from "./services/audit-service.js";
-import { createAuthService } from "./services/auth-service.js";
-import { createNormService } from "./services/norm-service.js";
-
-const SESSION_STORAGE_KEY = "sokol-spolurozhoduje-session-id";
+import { useAppController } from "./hooks/use-app-controller.js";
 
 const STATUS_OPTIONS = [
   "Koncept",
@@ -51,43 +48,19 @@ function EmptyState({ children }) {
 }
 
 export default function Home() {
-  const [norms, setNorms] = useState(initialNorms);
-  const [services, setServices] = useState(null);
-  const [sessionId, setSessionId] = useState(null);
-  const [view, setView] = useState("landing");
+  const controller = useAppController();
+  const { state, session, currentUser, view, actions, feedback, authMode, services } = controller;
+  const norms = state.norms;
+  const sessionId = session?.id || null;
+  const setView = actions.setView;
+  const flash = actions.flash;
   const [selectedId, setSelectedId] = useState(initialNorms[0].id);
   const [adminId, setAdminId] = useState(initialNorms[0].id);
   const [filter, setFilter] = useState("Aktivní");
   const [submissionMode, setSubmissionMode] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [toast, setToast] = useState("");
   const [votes, setVotes] = useState({});
   const [needVote, setNeedVote] = useState(null);
-
-  useEffect(() => {
-    const repository = createBrowserRepository({ storage: window.localStorage });
-    const audit = createAuditService(repository, Date.now);
-    const auth = createAuthService({
-      repository,
-      audit,
-      cryptoAdapter: createCryptoAdapter(window.crypto),
-      now: Date.now,
-    });
-    const normService = createNormService({
-      repository,
-      auth,
-      audit,
-      fileRepository,
-      now: Date.now,
-    });
-    setServices({ repository, auth, normService });
-    setSessionId(window.sessionStorage.getItem(SESSION_STORAGE_KEY));
-    setNorms(repository.read().norms);
-    void auth
-      .ensureDemoCredentials()
-      .then(() => setNorms(repository.read().norms))
-      .catch(() => flash("Modelové účty se nepodařilo připravit."));
-  }, []);
 
   const publicNorms = useMemo(
     () => (services ? services.normService.listPublicNorms("Všechny") : initialNorms),
@@ -122,20 +95,13 @@ export default function Home() {
     );
   }, [filter, norms, services]);
 
-  function flash(message) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 2600);
-  }
-
   function refreshNorms() {
     if (!services) return [];
-    const nextNorms = services.repository.read().norms;
-    setNorms(nextNorms);
-    return nextNorms;
+    return actions.refresh()?.norms || [];
   }
 
   function currentSessionId() {
-    return window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    return session?.id || null;
   }
 
   async function runMutation(operation) {
@@ -143,15 +109,12 @@ export default function Home() {
       flash("Aplikace se ještě připravuje.");
       return null;
     }
-    try {
-      const result = await operation(services.normService, currentSessionId());
-      refreshNorms();
-      flash(result.message);
-      return result;
-    } catch (error) {
-      flash(error?.message || "Operaci se nepodařilo dokončit.");
+    if (!currentSessionId()) {
+      actions.openLogin();
+      flash("Pro aktivní účast se nejprve přihlaste.");
       return null;
     }
+    return actions.mutate(() => operation(services.normService, currentSessionId()));
   }
 
   function updateNorm(id, patch) {
@@ -165,6 +128,11 @@ export default function Home() {
   }
 
   function openAdmin(id = adminId) {
+    if (!currentSessionId()) {
+      actions.openLogin();
+      flash("Administrace je dostupná po přihlášení správce.");
+      return;
+    }
     if (id) setAdminId(id);
     setView("admin");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -300,7 +268,12 @@ export default function Home() {
           <button className={view === "detail" ? "active" : ""} onClick={() => openNorm(selectedNorm?.id)}>Připomínkování</button>
           <button className={view === "admin" ? "active" : ""} onClick={() => openAdmin()}>Administrace</button>
         </nav>
-        <div className="userBox"><span>MK</span><small>pilotní účet</small></div>
+        <UserMenu
+          currentUser={currentUser}
+          onLogin={() => actions.openLogin()}
+          onProfile={() => flash("Profil uživatele bude dostupný v navazující části aplikace.")}
+          onLogout={actions.logout}
+        />
       </header>
 
       {view === "landing" && (
@@ -539,7 +512,15 @@ export default function Home() {
           </form>
         </div>
       )}
-      {toast && <div className="toast">{toast}</div>}
+      {authMode && services?.auth && (
+        <AuthDialog
+          authMode={authMode}
+          authService={services.auth}
+          onAuthenticated={actions.authenticated}
+          onClose={actions.closeLogin}
+        />
+      )}
+      <Feedback feedback={feedback} />
     </main>
   );
 }

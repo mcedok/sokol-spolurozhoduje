@@ -7,8 +7,9 @@ import { createAuthService } from "../app/services/auth-service.js";
 import { createFakeClock, createMemoryStorage } from "./fakes.js";
 
 const MODEL_CREDENTIALS = {
-  superadmin: { email: "superadmin@sokol.cz", password: "SuperSokol!2026" },
-  admin: { email: "admin@sokol.cz", password: "AdminSokol!2026" },
+  superadmin: { email: "superadmin@sokol.demo", password: "SuperSokol!2026" },
+  admin: { email: "administrator@sokol.demo", password: "AdminSokol!2026" },
+  member: { email: "clen@sokol.demo", code: "260814" },
 };
 
 function createHarness() {
@@ -50,6 +51,84 @@ describe("auth service", () => {
 
   beforeEach(() => {
     harness = createHarness();
+  });
+
+  it("classifies an email for adaptive login without returning account secrets", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => {
+      state.users.find((user) => user.id === "user-admin-demo").status = USER_STATUS.BLOCKED;
+    });
+
+    expect(auth.identify(MODEL_CREDENTIALS.member.email)).toEqual({ kind: "member" });
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).toEqual({ kind: "password" });
+    expect(auth.identify("neznamy@sokol.demo")).toEqual({ kind: "register" });
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).not.toHaveProperty("status");
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).not.toHaveProperty("passwordHash");
+  });
+
+  it("keeps the documented member demo code usable while issuing random codes to other members", async () => {
+    const { auth } = harness;
+
+    const demoDelivery = await auth.requestMemberCode(MODEL_CREDENTIALS.member.email);
+    expect(demoDelivery.demoCode).toBe(MODEL_CREDENTIALS.member.code);
+    await expect(
+      auth.verifyMemberCode({ challengeId: demoDelivery.challengeId, code: MODEL_CREDENTIALS.member.code }),
+    ).resolves.toMatchObject({ userId: "user-member-demo" });
+
+    const delivery = await auth.registerMember(memberProfile({ email: "random-code@example.cz" }));
+    expect(delivery.demoCode).toBe("123456");
+  });
+
+  it("keeps exact demo credentials bound to seeded roles when stored emails collide", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => {
+      state.users.find((user) => user.id === "user-admin-demo").email = "upraveny-admin@example.cz";
+      state.users.find((user) => user.id === "user-member-demo").email = "upraveny-clen@example.cz";
+      state.users.push(
+        {
+          id: "collision-member",
+          firstName: "Kolizní",
+          lastName: "Člen",
+          email: MODEL_CREDENTIALS.admin.email,
+          sokolUnit: "TJ Sokol Kolize",
+          membershipId: "COLLISION-MEMBER",
+          role: ROLE.MEMBER,
+          status: USER_STATUS.ACTIVE,
+          emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "collision-admin",
+          firstName: "Kolizní",
+          lastName: "Správce",
+          email: MODEL_CREDENTIALS.member.email,
+          sokolUnit: "TJ Sokol Kolize",
+          membershipId: "COLLISION-ADMIN",
+          role: ROLE.ADMIN,
+          status: USER_STATUS.ACTIVE,
+          emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+        },
+      );
+    });
+
+    await auth.ensureDemoCredentials();
+
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).toEqual({ kind: "password" });
+    const adminSession = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+    expect(auth.getSession(adminSession.id).user).toMatchObject({
+      role: ROLE.ADMIN,
+      email: MODEL_CREDENTIALS.admin.email,
+    });
+    const memberDelivery = await auth.requestMemberCode(MODEL_CREDENTIALS.member.email);
+    expect(memberDelivery.demoCode).toBe(MODEL_CREDENTIALS.member.code);
+    await expect(
+      auth.verifyMemberCode({
+        challengeId: memberDelivery.challengeId,
+        code: MODEL_CREDENTIALS.member.code,
+      }),
+    ).resolves.toMatchObject({ userId: memberDelivery.userId });
+    expect(repository.read().users.find((user) => user.id === "collision-member").email).toBe(
+      MODEL_CREDENTIALS.admin.email,
+    );
   });
 
   it("registers a member and exchanges the one-time code for an eight-hour session", async () => {

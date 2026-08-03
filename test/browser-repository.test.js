@@ -3,6 +3,41 @@ import { createBrowserRepository } from "../app/data/browser-repository.js";
 import { createInitialState } from "../app/domain/demo-data.js";
 
 describe("browser repository", () => {
+  it("migrates legacy demo addresses and adds the documented demo member without replacing user changes", () => {
+    localStorage.setItem(
+      "sokol-spolurozhoduje-pilot-v2",
+      JSON.stringify({
+        schemaVersion: 3,
+        users: [
+          { id: "user-superadmin-demo", email: "superadmin@sokol.cz", firstName: "Petra" },
+          { id: "user-admin-demo", email: "vlastni-adresa@example.cz", firstName: "Martin" },
+        ],
+        norms: [],
+      }),
+    );
+
+    const state = createBrowserRepository({ storage: localStorage }).read();
+
+    expect(state.users.find((user) => user.id === "user-superadmin-demo")).toMatchObject({
+      email: "superadmin@sokol.demo",
+      sokolUnit: "Česká obec sokolská",
+      membershipId: "DEMO-SUPERADMIN-001",
+    });
+    expect(state.users.find((user) => user.id === "user-admin-demo")).toMatchObject({
+      email: "vlastni-adresa@example.cz",
+      sokolUnit: "TJ Sokol Praha",
+      membershipId: "DEMO-ADMIN-001",
+    });
+    expect(state.users.find((user) => user.email === "administrator@sokol.demo")).toMatchObject({
+      role: "admin",
+      status: "active",
+    });
+    expect(state.users.find((user) => user.id === "user-member-demo")).toMatchObject({
+      email: "clen@sokol.demo",
+      membershipId: "DEMO-CLEN-001",
+    });
+  });
+
   it("migrates v2 norms to the access-control schema", () => {
     localStorage.setItem("sokol-spolurozhoduje-pilot-v2", JSON.stringify([{ id: "n1" }]));
     const state = createBrowserRepository({ storage: localStorage, now: () => 1 }).read();

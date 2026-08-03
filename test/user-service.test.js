@@ -8,8 +8,8 @@ import { createUserService } from "../app/services/user-service.js";
 import { createFakeClock, createMemoryStorage } from "./fakes.js";
 
 const MODEL_CREDENTIALS = {
-  superadmin: { email: "superadmin@sokol.cz", password: "SuperSokol!2026" },
-  admin: { email: "admin@sokol.cz", password: "AdminSokol!2026" },
+  superadmin: { email: "superadmin@sokol.demo", password: "SuperSokol!2026" },
+  admin: { email: "administrator@sokol.demo", password: "AdminSokol!2026" },
 };
 
 function memberProfile(overrides = {}) {
@@ -78,8 +78,8 @@ describe("user service", () => {
       users.listUsers(superadminSession.id, {
         role: ROLE.MEMBER,
         status: USER_STATUS.ACTIVE,
-      }),
-    ).toEqual([expect.objectContaining({ id: "member-searchable" })]);
+      }).map((user) => user.id),
+    ).toEqual(["user-member-demo", "member-searchable"]);
     expect(JSON.stringify(users.getUser(superadminSession.id, "member-searchable"))).not.toContain(
       "must-not-leak",
     );

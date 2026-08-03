@@ -29,6 +29,12 @@ const ERROR_MESSAGES = {
   WEAK_PASSWORD: "Heslo nesplnuje bezpecnostni pozadavky.",
 };
 
+const DEMO_ROLES = {
+  superadmin: ROLE.SUPERADMIN,
+  admin: ROLE.ADMIN,
+  member: ROLE.MEMBER,
+};
+
 export class AuthError extends Error {
   constructor(code) {
     super(ERROR_MESSAGES[code] || "Autentizace se nezdarila.");
@@ -67,6 +73,25 @@ function assertStrongPassword(password) {
 }
 
 export function createAuthService({ repository, audit, cryptoAdapter, now }) {
+  function findUserByEmail(email) {
+    const normalizedEmail = normalizeEmail(email);
+    const candidates = repository
+      .read()
+      .users.filter((candidate) => normalizeEmail(candidate.email) === normalizedEmail);
+    const demoCredential = Object.entries(DEMO_CREDENTIALS).find(
+      ([, credential]) => normalizeEmail(credential.email) === normalizedEmail,
+    )?.[0];
+    if (demoCredential) {
+      const seeded = candidates.find(
+        (candidate) =>
+          candidate.demoCredential === demoCredential &&
+          candidate.role === DEMO_ROLES[demoCredential],
+      );
+      if (seeded) return seeded;
+    }
+    return candidates[0];
+  }
+
   function createId(prefix) {
     return `${prefix}-${cryptoAdapter.randomToken()}`;
   }
@@ -145,7 +170,10 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
   }
 
   async function issueMemberCode(user) {
-    const demoCode = cryptoAdapter.randomDigits(6);
+    const demoCode =
+      user.demoCredential === "member"
+        ? DEMO_CREDENTIALS.member.code
+        : cryptoAdapter.randomDigits(6);
     const challenge = await createChallenge(
       CHALLENGE_TYPE.MEMBER_CODE,
       user.id,
@@ -175,14 +203,18 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
     return issueMemberCode(user);
   }
 
+  function identify(email) {
+    const user = findUserByEmail(email);
+    if (!user) return { kind: "register" };
+    if (user.role === ROLE.MEMBER) return { kind: "member" };
+    return { kind: "password" };
+  }
+
   async function requestMemberCode(email) {
-    const user = repository
-      .read()
-      .users.find(
-        (candidate) =>
-          normalizeEmail(candidate.email) === normalizeEmail(email) && candidate.role === ROLE.MEMBER,
-      );
-    if (!user || user.status === USER_STATUS.BLOCKED) return { kind: "member_code" };
+    const user = findUserByEmail(email);
+    if (!user || user.role !== ROLE.MEMBER || user.status === USER_STATUS.BLOCKED) {
+      return { kind: "member_code" };
+    }
     return issueMemberCode(user);
   }
 
@@ -234,9 +266,7 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
   }
 
   async function loginWithPassword({ email, password }) {
-    const user = repository
-      .read()
-      .users.find((candidate) => normalizeEmail(candidate.email) === normalizeEmail(email));
+    const user = findUserByEmail(email);
     if (!user?.passwordHash || !user.passwordSalt) throw new AuthError("INVALID_CREDENTIALS");
     if (user.status === USER_STATUS.BLOCKED) throw new AuthError("ACCOUNT_BLOCKED");
     if (user.status !== USER_STATUS.ACTIVE) throw new AuthError("INVALID_CREDENTIALS");
@@ -327,9 +357,7 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
   }
 
   async function requestPasswordReset(email) {
-    const user = repository
-      .read()
-      .users.find((candidate) => normalizeEmail(candidate.email) === normalizeEmail(email));
+    const user = findUserByEmail(email);
     if (!user?.passwordHash || user.status === USER_STATUS.BLOCKED) {
       return { kind: "password_reset_requested" };
     }
@@ -365,9 +393,8 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
 
   async function ensureDemoCredentials() {
     for (const credential of Object.values(DEMO_CREDENTIALS)) {
-      const user = repository
-        .read()
-        .users.find((candidate) => normalizeEmail(candidate.email) === normalizeEmail(credential.email));
+      if (!credential.password) continue;
+      const user = findUserByEmail(credential.email);
       if (!user || user.passwordHash) continue;
 
       const passwordCredential = await cryptoAdapter.hashSecret(credential.password);
@@ -382,6 +409,7 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
   }
 
   return {
+    identify,
     registerMember,
     requestMemberCode,
     verifyMemberCode,

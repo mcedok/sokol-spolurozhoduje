@@ -11,6 +11,54 @@ function migrateNorm(norm) {
   };
 }
 
+const LEGACY_DEMO_EMAILS = {
+  "user-superadmin-demo": "superadmin@sokol.cz",
+  "user-admin-demo": "admin@sokol.cz",
+};
+
+function migrateUsers(users, initialUsers) {
+  const migrated = (users || initialUsers).map((user) => {
+    const initialUser = initialUsers.find((candidate) => candidate.id === user.id);
+    if (!initialUser) return user;
+    const retainsSeedIdentity =
+      user.email === LEGACY_DEMO_EMAILS[user.id] ||
+      user.email?.toLowerCase() === initialUser.email.toLowerCase();
+    return {
+      ...user,
+      email: user.email === LEGACY_DEMO_EMAILS[user.id] ? initialUser.email : user.email,
+      sokolUnit: user.sokolUnit ?? initialUser.sokolUnit,
+      membershipId: user.membershipId ?? initialUser.membershipId,
+      demoCredential:
+        user.demoCredential ?? (retainsSeedIdentity ? initialUser.demoCredential : undefined),
+    };
+  });
+
+  for (const initialUser of initialUsers) {
+    if (
+      migrated.some(
+        (user) =>
+          user.demoCredential === initialUser.demoCredential &&
+          user.email?.toLowerCase() === initialUser.email.toLowerCase() &&
+          user.role === initialUser.role,
+      )
+    ) {
+      continue;
+    }
+    if (!migrated.some((user) => user.id === initialUser.id)) {
+      migrated.push(initialUser);
+      continue;
+    }
+    let suffix = 1;
+    let credentialId = `${initialUser.id}-credential`;
+    while (migrated.some((user) => user.id === credentialId)) {
+      suffix += 1;
+      credentialId = `${initialUser.id}-credential-${suffix}`;
+    }
+    migrated.push({ ...initialUser, id: credentialId });
+  }
+  return migrated;
+}
+
 function migrateState(value) {
   const initialState = createInitialState();
   const legacyNorms = Array.isArray(value) ? value : value.norms;
@@ -25,7 +73,7 @@ function migrateState(value) {
       norms,
       Array.isArray(value) ? undefined : value.normSequenceByYear,
     ),
-    users: Array.isArray(value.users) ? value.users : initialState.users,
+    users: migrateUsers(Array.isArray(value.users) ? value.users : undefined, initialState.users),
     challenges: Array.isArray(value.challenges) ? value.challenges : initialState.challenges,
     sessions: Array.isArray(value.sessions) ? value.sessions : initialState.sessions,
     auditEvents: Array.isArray(value.auditEvents) ? value.auditEvents : initialState.auditEvents,

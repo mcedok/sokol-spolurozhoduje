@@ -42,7 +42,7 @@ function normalizeProfile(input = {}) {
 }
 
 function publicUser(user) {
-  const { passwordHash, passwordSalt, passwordUpdatedAt, ...safeUser } = user;
+  const { demoCredential, passwordHash, passwordSalt, passwordUpdatedAt, ...safeUser } = user;
   return safeUser;
 }
 

@@ -1,8 +1,9 @@
 import { ROLE, USER_STATUS } from "./constants.js";
 
 export const DEMO_CREDENTIALS = {
-  superadmin: { email: "superadmin@sokol.cz", password: "SuperSokol!2026" },
-  admin: { email: "admin@sokol.cz", password: "AdminSokol!2026" },
+  superadmin: { email: "superadmin@sokol.demo", password: "SuperSokol!2026" },
+  admin: { email: "administrator@sokol.demo", password: "AdminSokol!2026" },
+  member: { email: "clen@sokol.demo", code: "260814" },
 };
 
 const DEMO_USERS = [
@@ -11,6 +12,9 @@ const DEMO_USERS = [
     firstName: "Petra",
     lastName: "Sokolová",
     email: DEMO_CREDENTIALS.superadmin.email,
+    sokolUnit: "Česká obec sokolská",
+    membershipId: "DEMO-SUPERADMIN-001",
+    demoCredential: "superadmin",
     role: ROLE.SUPERADMIN,
     status: USER_STATUS.ACTIVE,
     emailVerifiedAt: "2026-01-01T00:00:00.000Z",
@@ -22,11 +26,26 @@ const DEMO_USERS = [
     firstName: "Martin",
     lastName: "Kovář",
     email: DEMO_CREDENTIALS.admin.email,
+    sokolUnit: "TJ Sokol Praha",
+    membershipId: "DEMO-ADMIN-001",
+    demoCredential: "admin",
     role: ROLE.ADMIN,
     status: USER_STATUS.ACTIVE,
     emailVerifiedAt: "2026-01-01T00:00:00.000Z",
     passwordHash: null,
     passwordSalt: null,
+  },
+  {
+    id: "user-member-demo",
+    firstName: "Modelový",
+    lastName: "Člen",
+    email: DEMO_CREDENTIALS.member.email,
+    sokolUnit: "TJ Sokol Demo",
+    membershipId: "DEMO-CLEN-001",
+    demoCredential: "member",
+    role: ROLE.MEMBER,
+    status: USER_STATUS.ACTIVE,
+    emailVerifiedAt: "2026-01-01T00:00:00.000Z",
   },
 ];
 

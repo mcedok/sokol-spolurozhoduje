@@ -9,8 +9,8 @@ import { createNormService, NormServiceError } from "../app/services/norm-servic
 import { createFakeClock, createMemoryStorage } from "./fakes.js";
 
 const MODEL_CREDENTIALS = {
-  superadmin: { email: "superadmin@sokol.cz", password: "SuperSokol!2026" },
-  admin: { email: "admin@sokol.cz", password: "AdminSokol!2026" },
+  superadmin: { email: "superadmin@sokol.demo", password: "SuperSokol!2026" },
+  admin: { email: "administrator@sokol.demo", password: "AdminSokol!2026" },
 };
 
 function session(id, userId, now) {
