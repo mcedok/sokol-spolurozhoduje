@@ -27,8 +27,21 @@ function invitedAdmin() {
     firstName: "Anna",
     lastName: "Novakova",
     email: "anna.admin@example.cz",
+    sokolUnit: "TJ Sokol Praha",
+    membershipId: "ADMIN-001",
     role: ROLE.ADMIN,
     status: USER_STATUS.INVITED,
+  };
+}
+
+function memberProfile(overrides = {}) {
+  return {
+    firstName: "Jan",
+    lastName: "Novak",
+    email: "jan.novak@example.cz",
+    sokolUnit: "TJ Sokol Praha",
+    membershipId: "MEMBER-001",
+    ...overrides,
   };
 }
 
@@ -41,11 +54,7 @@ describe("auth service", () => {
 
   it("registers a member and exchanges the one-time code for an eight-hour session", async () => {
     const { auth, clock, repository } = harness;
-    const delivery = await auth.registerMember({
-      firstName: "Jan",
-      lastName: "Novak",
-      email: "JAN.NOVAK@example.cz",
-    });
+    const delivery = await auth.registerMember(memberProfile({ email: "JAN.NOVAK@example.cz" }));
 
     expect(delivery.kind).toBe("member_code");
     await expect(auth.verifyMemberCode({ challengeId: delivery.challengeId, code: "000000" }))
@@ -73,13 +82,38 @@ describe("auth service", () => {
     expect(JSON.stringify(persisted)).not.toContain(delivery.demoCode);
   });
 
+  it("preserves all five required member profile fields and rejects blank values", async () => {
+    const { auth, repository } = harness;
+    const delivery = await auth.registerMember({
+      firstName: "  Jana  ",
+      lastName: "  Novakova  ",
+      email: "  JANA.NOVAKOVA@example.cz  ",
+      sokolUnit: "  TJ Sokol Brno  ",
+      membershipId: "  MEMBER-2026-42  ",
+    });
+
+    expect(repository.read().users.find((user) => user.id === delivery.userId)).toMatchObject({
+      firstName: "Jana",
+      lastName: "Novakova",
+      email: "jana.novakova@example.cz",
+      sokolUnit: "TJ Sokol Brno",
+      membershipId: "MEMBER-2026-42",
+    });
+
+    const countAfterValidRegistration = repository.read().users.length;
+    for (const field of ["firstName", "lastName", "email", "sokolUnit", "membershipId"]) {
+      await expect(
+        auth.registerMember(
+          memberProfile({ email: `blank-${field}@example.cz`, [field]: "   " }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_PROFILE" });
+    }
+    expect(repository.read().users).toHaveLength(countAfterValidRegistration);
+  });
+
   it("expires a member code after ten minutes", async () => {
     const { auth, clock } = harness;
-    const delivery = await auth.registerMember({
-      firstName: "Jan",
-      lastName: "Novak",
-      email: "member-expiry@example.cz",
-    });
+    const delivery = await auth.registerMember(memberProfile({ email: "member-expiry@example.cz" }));
     clock.advance(LIMITS.memberCodeMs + 1);
 
     await expect(
@@ -89,11 +123,7 @@ describe("auth service", () => {
 
   it("issues a fresh member code without revealing whether an email exists", async () => {
     const { auth } = harness;
-    await auth.registerMember({
-      firstName: "Jan",
-      lastName: "Novak",
-      email: "member-resend@example.cz",
-    });
+    await auth.registerMember(memberProfile({ email: "member-resend@example.cz" }));
 
     const neutralDelivery = await auth.requestMemberCode("unknown@example.cz");
     expect(neutralDelivery).toEqual({ kind: "member_code" });
@@ -107,11 +137,7 @@ describe("auth service", () => {
 
   it("locks a member code on the fifth incorrect attempt", async () => {
     const { auth } = harness;
-    const delivery = await auth.registerMember({
-      firstName: "Jan",
-      lastName: "Novak",
-      email: "member-lock@example.cz",
-    });
+    const delivery = await auth.registerMember(memberProfile({ email: "member-lock@example.cz" }));
 
     for (let attempt = 1; attempt < LIMITS.maxCodeAttempts; attempt += 1) {
       await expect(
@@ -124,6 +150,29 @@ describe("auth service", () => {
     await expect(
       auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
     ).rejects.toMatchObject({ code: "CODE_LOCKED" });
+  });
+
+  it("does not reactivate a blocked member and can revoke the member's open challenges", async () => {
+    const { auth, repository } = harness;
+    const delivery = await auth.registerMember(memberProfile({ email: "member-blocked@example.cz" }));
+    repository.update((state) => {
+      state.users.find((user) => user.id === delivery.userId).status = USER_STATUS.BLOCKED;
+    });
+
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_BLOCKED" });
+    expect(repository.read().users.find((user) => user.id === delivery.userId).status).toBe(
+      USER_STATUS.BLOCKED,
+    );
+
+    auth.revokeUserChallenges(delivery.userId);
+    repository.update((state) => {
+      state.users.find((user) => user.id === delivery.userId).status = USER_STATUS.PENDING;
+    });
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
+    ).rejects.toMatchObject({ code: "INVALID_CODE" });
   });
 
   it("initializes both model passwords once without replacing a changed password", async () => {
@@ -173,6 +222,53 @@ describe("auth service", () => {
     const persisted = repository.read();
     expect(JSON.stringify(persisted)).not.toContain(delivery.demoToken);
     expect(persisted.users.find((user) => user.id === invitedAdmin().id)).not.toHaveProperty("password");
+  });
+
+  it("does not reactivate a blocked invited administrator with an issued setup token", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => state.users.push(invitedAdmin()));
+    await auth.ensureDemoCredentials();
+    const actor = await auth.loginWithPassword(MODEL_CREDENTIALS.superadmin);
+    const delivery = await auth.createPasswordSetup(actor.id, invitedAdmin().id);
+    repository.update((state) => {
+      state.users.find((user) => user.id === invitedAdmin().id).status = USER_STATUS.BLOCKED;
+    });
+
+    await expect(
+      auth.completePasswordSetup({ token: delivery.demoToken, password: "InvitedSokol!2026" }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_BLOCKED" });
+
+    const state = repository.read();
+    expect(state.users.find((user) => user.id === invitedAdmin().id)).toMatchObject({
+      status: USER_STATUS.BLOCKED,
+    });
+    expect(state.users.find((user) => user.id === invitedAdmin().id)).not.toHaveProperty("passwordHash");
+    expect(state.challenges.find((challenge) => challenge.id === delivery.challengeId).usedAt).toBeNull();
+  });
+
+  it("accepts an exact ten-character password and rejects shorter or incomplete passwords", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => state.users.push(invitedAdmin()));
+    await auth.ensureDemoCredentials();
+    const actor = await auth.loginWithPassword(MODEL_CREDENTIALS.superadmin);
+    const delivery = await auth.createPasswordSetup(actor.id, invitedAdmin().id);
+
+    for (const password of [
+      "Aa1!aaaaa",
+      "aa1!aaaaaa",
+      "AA1!AAAAAA",
+      "AaA!aaaaaa",
+      "Aa1aaaaaaa",
+    ]) {
+      await expect(
+        auth.completePasswordSetup({ token: delivery.demoToken, password }),
+      ).rejects.toMatchObject({ code: "WEAK_PASSWORD" });
+    }
+
+    await auth.completePasswordSetup({ token: delivery.demoToken, password: "Aa1!aaaaaa" });
+    await expect(
+      auth.loginWithPassword({ email: invitedAdmin().email, password: "Aa1!aaaaaa" }),
+    ).resolves.toMatchObject({ userId: invitedAdmin().id });
   });
 
   it("expires password links after thirty minutes", async () => {
@@ -233,11 +329,7 @@ describe("auth service", () => {
 
   it("keeps delivered secrets out of audit metadata", async () => {
     const { auth, audit } = harness;
-    const delivery = await auth.registerMember({
-      firstName: "Jan",
-      lastName: "Novak",
-      email: "audit-member@example.cz",
-    });
+    const delivery = await auth.registerMember(memberProfile({ email: "audit-member@example.cz" }));
 
     expect(JSON.stringify(audit.listForTarget("user", delivery.userId))).not.toContain(delivery.demoCode);
   });

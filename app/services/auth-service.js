@@ -2,7 +2,7 @@ import { CHALLENGE_TYPE, LIMITS, ROLE, USER_STATUS } from "../domain/constants.j
 import { DEMO_CREDENTIALS } from "../domain/demo-data.js";
 
 const PASSWORD_REQUIREMENTS = {
-  minimumLength: 12,
+  minimumLength: 10,
   uppercase: /[A-Z]/,
   lowercase: /[a-z]/,
   digit: /\d/,
@@ -17,6 +17,7 @@ const ERROR_MESSAGES = {
   EMAIL_EXISTS: "Ucet s timto e-mailem uz existuje.",
   INVALID_CODE: "Overovaci kod neni platny.",
   INVALID_CREDENTIALS: "E-mail nebo heslo nejsou platne.",
+  INVALID_PROFILE: "Vyplnte vsechna povinna profilova pole.",
   INVALID_SESSION: "Relace neni platna.",
   INVALID_TOKEN: "Odkaz neni platny.",
   SESSION_EXPIRED: "Relace vyprsela.",
@@ -38,6 +39,19 @@ export class AuthError extends Error {
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function normalizeMemberProfile(profile = {}) {
+  const normalized = {
+    firstName: String(profile.firstName || "").trim(),
+    lastName: String(profile.lastName || "").trim(),
+    email: normalizeEmail(profile.email),
+    sokolUnit: String(profile.sokolUnit || "").trim(),
+    membershipId: String(profile.membershipId || "").trim(),
+  };
+
+  if (Object.values(normalized).some((value) => !value)) throw new AuthError("INVALID_PROFILE");
+  return normalized;
 }
 
 function assertStrongPassword(password) {
@@ -86,6 +100,7 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
       attempts: 0,
       usedAt: null,
       lockedAt: null,
+      revokedAt: null,
     };
   }
 
@@ -119,6 +134,16 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
     });
   }
 
+  function revokeUserChallenges(userId) {
+    repository.update((state) => {
+      for (const challenge of state.challenges) {
+        if (challenge.userId === userId && challenge.usedAt === null && challenge.revokedAt === null) {
+          challenge.revokedAt = now();
+        }
+      }
+    });
+  }
+
   async function issueMemberCode(user) {
     const demoCode = cryptoAdapter.randomDigits(6);
     const challenge = await createChallenge(
@@ -133,16 +158,14 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
   }
 
   async function registerMember(profile) {
-    const email = normalizeEmail(profile.email);
-    if (repository.read().users.some((user) => normalizeEmail(user.email) === email)) {
+    const normalized = normalizeMemberProfile(profile);
+    if (repository.read().users.some((user) => normalizeEmail(user.email) === normalized.email)) {
       throw new AuthError("EMAIL_EXISTS");
     }
 
     const user = {
       id: createId("user"),
-      firstName: String(profile.firstName || "").trim(),
-      lastName: String(profile.lastName || "").trim(),
-      email,
+      ...normalized,
       role: ROLE.MEMBER,
       status: USER_STATUS.PENDING,
       emailVerifiedAt: null,
@@ -168,8 +191,9 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
       .read()
       .challenges.find(
         (candidate) => candidate.id === challengeId && candidate.type === CHALLENGE_TYPE.MEMBER_CODE,
-      );
+    );
     if (!challenge) throw new AuthError("INVALID_CODE");
+    if (challenge.revokedAt !== null) throw new AuthError("INVALID_CODE");
     if (challenge.usedAt !== null) throw new AuthError("CODE_USED");
     if (challenge.lockedAt !== null || challenge.attempts >= LIMITS.maxCodeAttempts) {
       throw new AuthError("CODE_LOCKED");
@@ -193,9 +217,14 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
     const session = createSessionRecord(challenge.userId);
     repository.update((state) => {
       const current = state.challenges.find((candidate) => candidate.id === challenge.id);
+      if (current.revokedAt !== null) throw new AuthError("INVALID_CODE");
       if (current.usedAt !== null) throw new AuthError("CODE_USED");
-      current.usedAt = now();
       const user = state.users.find((candidate) => candidate.id === challenge.userId);
+      if (user.status === USER_STATUS.BLOCKED) throw new AuthError("ACCOUNT_BLOCKED");
+      if (user.role !== ROLE.MEMBER || ![USER_STATUS.PENDING, USER_STATUS.ACTIVE].includes(user.status)) {
+        throw new AuthError("INVALID_CODE");
+      }
+      current.usedAt = now();
       user.status = USER_STATUS.ACTIVE;
       user.emailVerifiedAt = now();
       state.sessions.push(session);
@@ -262,15 +291,18 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
   async function completePasswordChallenge({ token, password }, type) {
     assertStrongPassword(password);
     const challenge = await findPasswordChallenge(token, type);
+    if (challenge.revokedAt !== null) throw new AuthError("INVALID_TOKEN");
     if (challenge.usedAt !== null) throw new AuthError("TOKEN_USED");
     if (challenge.expiresAt <= now()) throw new AuthError("TOKEN_EXPIRED");
 
     const credential = await cryptoAdapter.hashSecret(password);
     repository.update((state) => {
       const current = state.challenges.find((candidate) => candidate.id === challenge.id);
+      if (current.revokedAt !== null) throw new AuthError("INVALID_TOKEN");
       if (current.usedAt !== null) throw new AuthError("TOKEN_USED");
-      current.usedAt = now();
       const user = state.users.find((candidate) => candidate.id === challenge.userId);
+      if (user.status === USER_STATUS.BLOCKED) throw new AuthError("ACCOUNT_BLOCKED");
+      current.usedAt = now();
       user.passwordHash = credential.hash;
       user.passwordSalt = credential.salt;
       if (type === CHALLENGE_TYPE.SET_PASSWORD) {
@@ -362,6 +394,7 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
     getSession,
     logout,
     revokeUserSessions,
+    revokeUserChallenges,
     ensureDemoCredentials,
   };
 }
