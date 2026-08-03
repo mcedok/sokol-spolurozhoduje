@@ -1,0 +1,105 @@
+import { ROLE, USER_STATUS } from "./constants.js";
+
+export const DEMO_CREDENTIALS = {
+  superadmin: { email: "superadmin@sokol.cz", password: "SuperSokol!2026" },
+  admin: { email: "admin@sokol.cz", password: "AdminSokol!2026" },
+};
+
+const DEMO_USERS = [
+  {
+    id: "user-superadmin-demo",
+    firstName: "Petra",
+    lastName: "Sokolová",
+    email: DEMO_CREDENTIALS.superadmin.email,
+    role: ROLE.SUPERADMIN,
+    status: USER_STATUS.ACTIVE,
+    emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "user-admin-demo",
+    firstName: "Martin",
+    lastName: "Kovář",
+    email: DEMO_CREDENTIALS.admin.email,
+    role: ROLE.ADMIN,
+    status: USER_STATUS.ACTIVE,
+    emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+  },
+];
+
+const DEMO_NORMS = [
+  {
+    id: "norm-001",
+    number: "SOKOL-2026-001",
+    title: "Členský a organizační řád",
+    category: "Vnitřní předpis",
+    version: "2.1",
+    status: "K připomínkování",
+    commentsOpen: true,
+    publishedAt: "2026-06-12",
+    deadline: "2026-08-15",
+    submittedBy: "Předsednictvo České obce sokolské",
+    responsible: "Odbor organizace ČOS",
+    summary: "Návrh sjednocuje členská práva, digitální účast a pravidla rozhodování.",
+    reason: "Materiál zpřesňuje práva členů, lhůty a zveřejňování rozhodnutí.",
+    file: null,
+    needVotes: { yes: 72, no: 28 },
+    sections: [],
+    submissions: [],
+    ownerAdminId: "user-admin-demo",
+    visibilityMode: "public-detail",
+  },
+  {
+    id: "norm-002",
+    number: "SOKOL-2026-002",
+    title: "Pravidla pro elektronické hlasování",
+    category: "Metodický pokyn",
+    version: "1.0",
+    status: "Vypořádání",
+    commentsOpen: false,
+    publishedAt: "2026-05-04",
+    deadline: "2026-06-30",
+    submittedBy: "Výbor České obce sokolské",
+    responsible: "Kancelář ČOS",
+    summary: "Procesní pravidla pro ověření člena a bezpečné hlasování.",
+    reason: "Materiál stanovuje minimální pravidla pro elektronické hlasování.",
+    file: null,
+    needVotes: { yes: 89, no: 11 },
+    sections: [],
+    submissions: [],
+    ownerAdminId: "user-admin-demo",
+    visibilityMode: "public-detail",
+  },
+  {
+    id: "norm-003",
+    number: "SOKOL-2026-003",
+    title: "Zásady péče o sokolský majetek",
+    category: "Směrnice",
+    version: "0.8",
+    status: "Koncept",
+    commentsOpen: false,
+    publishedAt: "",
+    deadline: "",
+    submittedBy: "Ekonomická komise ČOS",
+    responsible: "Majetkový odbor ČOS",
+    summary: "Připravovaná pravidla evidence a údržby sokolského majetku.",
+    reason: "Materiál reaguje na rozdílnou praxi při evidenci majetku.",
+    file: null,
+    needVotes: { yes: 0, no: 0 },
+    sections: [],
+    submissions: [],
+    ownerAdminId: "user-admin-demo",
+    visibilityMode: "public-detail",
+  },
+];
+
+export function createInitialState() {
+  return structuredClone({
+    schemaVersion: 3,
+    users: DEMO_USERS,
+    challenges: [],
+    sessions: [],
+    auditEvents: [],
+    norms: DEMO_NORMS,
+    votes: {},
+  });
+}

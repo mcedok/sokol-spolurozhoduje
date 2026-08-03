@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { readFile, removeFile, storeFile } from "./data/file-repository.js";
 
 const STORAGE_KEY = "sokol-spolurozhoduje-pilot-v2";
-const DB_NAME = "sokol-spolurozhoduje-files";
-const STORE_NAME = "documents";
 
 const STATUS_OPTIONS = [
   "Koncept",
@@ -207,53 +206,6 @@ function dateLabel(value) {
     month: "long",
     year: "numeric",
   }).format(new Date(`${value}T12:00:00`));
-}
-
-function openFilesDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function storeFile(id, file) {
-  const db = await openFilesDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).put(file, id);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  db.close();
-}
-
-async function readFile(id) {
-  const db = await openFilesDb();
-  const file = await new Promise((resolve, reject) => {
-    const request = db.transaction(STORE_NAME).objectStore(STORE_NAME).get(id);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
-  return file;
-}
-
-async function removeFile(id) {
-  if (!id) return;
-  const db = await openFilesDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).delete(id);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  db.close();
 }
 
 function StatusBadge({ value }) {
