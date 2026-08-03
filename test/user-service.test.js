@@ -261,6 +261,105 @@ describe("user service", () => {
     expect(state.challenges.find((challenge) => challenge.id === delivery.challengeId).revokedAt).toBeNull();
   });
 
+  it("audits member promotion role and status changes as separate events", async () => {
+    const { auth, repository, superadminSession, users } = harness;
+    const memberCode = await auth.registerMember(memberProfile({ email: "audit-promotion@example.cz" }));
+    const memberSession = await auth.verifyMemberCode({
+      challengeId: memberCode.challengeId,
+      code: memberCode.demoCode,
+    });
+
+    await users.changeUserRole(superadminSession.id, memberSession.userId, ROLE.ADMIN);
+
+    const events = repository
+      .read()
+      .auditEvents.filter(
+        (event) =>
+          event.targetId === memberSession.userId &&
+          ["user.role_changed", "user.status_changed"].includes(event.action),
+      )
+      .map(({ action, metadata }) => ({ action, metadata }));
+    expect(events).toHaveLength(2);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        {
+          action: "user.role_changed",
+          metadata: { oldRole: ROLE.MEMBER, newRole: ROLE.ADMIN },
+        },
+        {
+          action: "user.status_changed",
+          metadata: { oldStatus: USER_STATUS.ACTIVE, newStatus: USER_STATUS.INVITED },
+        },
+      ]),
+    );
+  });
+
+  it("audits invited administrator demotion role and status changes as separate events", async () => {
+    const { repository, superadminSession, users } = harness;
+    const invited = await users.createPrivilegedUser(
+      superadminSession.id,
+      privilegedProfile({ email: "audit-demotion@example.cz" }),
+    );
+
+    await users.changeUserRole(superadminSession.id, invited.userId, ROLE.MEMBER);
+
+    const events = repository
+      .read()
+      .auditEvents.filter(
+        (event) =>
+          event.targetId === invited.userId &&
+          ["user.role_changed", "user.status_changed"].includes(event.action),
+      )
+      .map(({ action, metadata }) => ({ action, metadata }));
+    expect(events).toHaveLength(2);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        {
+          action: "user.role_changed",
+          metadata: { oldRole: ROLE.ADMIN, newRole: ROLE.MEMBER },
+        },
+        {
+          action: "user.status_changed",
+          metadata: { oldStatus: USER_STATUS.INVITED, newStatus: USER_STATUS.PENDING },
+        },
+      ]),
+    );
+  });
+
+  it.each([
+    { oldRole: ROLE.ADMIN, newRole: ROLE.SUPERADMIN, email: "invited-admin-up@example.cz" },
+    { oldRole: ROLE.SUPERADMIN, newRole: ROLE.ADMIN, email: "invited-admin-down@example.cz" },
+  ])(
+    "rotates password setup when an invited $oldRole changes to $newRole",
+    async ({ oldRole, newRole, email }) => {
+      const { auth, repository, superadminSession, users } = harness;
+      const oldDelivery = await users.createPrivilegedUser(
+        superadminSession.id,
+        privilegedProfile({ email, role: oldRole }),
+      );
+
+      const newDelivery = await users.changeUserRole(
+        superadminSession.id,
+        oldDelivery.userId,
+        newRole,
+      );
+
+      expect(newDelivery).toMatchObject({ kind: "set_password", userId: oldDelivery.userId });
+      expect(newDelivery.challengeId).not.toBe(oldDelivery.challengeId);
+      await expect(
+        auth.completePasswordSetup({ token: oldDelivery.demoToken, password: "InvitedOld!2026" }),
+      ).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+      await auth.completePasswordSetup({
+        token: newDelivery.demoToken,
+        password: "InvitedNew!2026",
+      });
+      expect(repository.read().users.find((user) => user.id === oldDelivery.userId)).toMatchObject({
+        role: newRole,
+        status: USER_STATUS.ACTIVE,
+      });
+    },
+  );
+
   it("restores a member and prior authentication when promoted password setup delivery fails", async () => {
     const { audit, auth, clock, repository, superadminSession } = harness;
     const memberCode = await auth.registerMember(memberProfile({ email: "rollback-member@example.cz" }));

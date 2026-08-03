@@ -203,8 +203,21 @@ export function createUserService({ repository, auth, audit, now }) {
     assertNotLastActiveSuperadmin(state, user, role, user.status);
 
     const oldRole = user.role;
+    const oldStatus = user.status;
     const demotingToMember = PRIVILEGED_ROLES.has(oldRole) && role === ROLE.MEMBER;
     const promotingMember = oldRole === ROLE.MEMBER && PRIVILEGED_ROLES.has(role);
+    const rotatingInvitedPrivilegedRole =
+      oldStatus === USER_STATUS.INVITED &&
+      PRIVILEGED_ROLES.has(oldRole) &&
+      PRIVILEGED_ROLES.has(role);
+    const requiresPasswordSetup = promotingMember || rotatingInvitedPrivilegedRole;
+    const newStatus = promotingMember
+      ? USER_STATUS.INVITED
+      : demotingToMember
+        ? user.emailVerifiedAt
+          ? USER_STATUS.ACTIVE
+          : USER_STATUS.PENDING
+        : oldStatus;
     const ownedNorms = demotingToMember
       ? state.norms.filter((norm) => norm.ownerAdminId === userId)
       : [];
@@ -241,7 +254,7 @@ export function createUserService({ repository, auth, audit, now }) {
 
     revokeAuthentication(userId);
     let delivery;
-    if (promotingMember) {
+    if (requiresPasswordSetup) {
       try {
         delivery = await auth.createPasswordSetup(sessionId, userId);
       } catch (error) {
@@ -250,6 +263,9 @@ export function createUserService({ repository, auth, audit, now }) {
       }
     }
     recordUserChange(actor.id, "user.role_changed", userId, { oldRole, newRole: role });
+    if (oldStatus !== newStatus) {
+      recordUserChange(actor.id, "user.status_changed", userId, { oldStatus, newStatus });
+    }
     for (const norm of ownedNorms) {
       audit.record({
         actorUserId: actor.id,
@@ -263,7 +279,7 @@ export function createUserService({ repository, auth, audit, now }) {
       });
     }
 
-    if (promotingMember) return asSetPasswordDelivery(delivery);
+    if (requiresPasswordSetup) return asSetPasswordDelivery(delivery);
     return publicUser(findUser(userId));
   }
 
