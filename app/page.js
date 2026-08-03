@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { readFile, removeFile, storeFile } from "./data/file-repository.js";
+import { createBrowserRepository } from "./data/browser-repository.js";
+import * as fileRepository from "./data/file-repository.js";
+import { createInitialState } from "./domain/demo-data.js";
+import { createCryptoAdapter } from "./security/crypto-adapter.js";
+import { createAuditService } from "./services/audit-service.js";
+import { createAuthService } from "./services/auth-service.js";
+import { createNormService } from "./services/norm-service.js";
 
-const STORAGE_KEY = "sokol-spolurozhoduje-pilot-v2";
+const SESSION_STORAGE_KEY = "sokol-spolurozhoduje-session-id";
 
 const STATUS_OPTIONS = [
   "Koncept",
@@ -25,179 +31,7 @@ const statusClass = {
   Archivováno: "neutral",
 };
 
-const initialNorms = [
-  {
-    id: "norm-001",
-    number: "SOKOL-2026-001",
-    title: "Členský a organizační řád",
-    category: "Vnitřní předpis",
-    version: "2.1",
-    status: "K připomínkování",
-    commentsOpen: true,
-    publishedAt: "2026-06-12",
-    deadline: "2026-08-15",
-    submittedBy: "Předsednictvo České obce sokolské",
-    responsible: "Odbor organizace ČOS",
-    summary:
-      "Návrh sjednocuje členská práva, digitální účast a pravidla rozhodování v tělocvičných jednotách.",
-    reason:
-      "Dosavadní úprava nepočítá s běžným využíváním elektronických nástrojů a vzdálenou účastí. Navrhované změny zpřesňují práva členů, lhůty pro vyřízení podnětů a způsob zveřejňování rozhodnutí. Cílem je srozumitelnější a jednotný postup napříč župami a tělocvičnými jednotami.",
-    file: null,
-    needVotes: { yes: 72, no: 28 },
-    sections: [
-      {
-        id: "rights",
-        label: "§ 4",
-        title: "Práva člena",
-        paragraphs: [
-          "Člen Sokola má právo účastnit se činnosti jednoty, být informován o jejím hospodaření a podílet se na rozhodování v rozsahu stanoveném tímto řádem.",
-          "Člen může předkládat návrhy a podněty orgánům jednoty. Orgán, kterému byl podnět doručen, jej projedná a o výsledku člena vyrozumí.",
-          "Člen má právo nahlížet do zápisů z jednání orgánů jednoty, pokud tím nejsou dotčena práva třetích osob nebo povinnost mlčenlivosti.",
-        ],
-      },
-      {
-        id: "bodies",
-        label: "§ 9",
-        title: "Orgány jednoty",
-        paragraphs: [
-          "Orgány jednoty rozhodují transparentně a zveřejňují přijatá usnesení způsobem dostupným členům.",
-          "Jednání orgánu může proběhnout prezenčně, distančně nebo kombinovanou formou.",
-        ],
-      },
-    ],
-    submissions: [
-      {
-        id: "sub-1",
-        kind: "Návrh úpravy",
-        section: "§ 4 odst. 2",
-        title: "Doplnit možnost vzdálené účasti",
-        text: "Doplnit právo účastnit se schůze prostřednictvím prostředků komunikace na dálku.",
-        author: "Jana K.",
-        unit: "TJ Sokol Brno I",
-        createdAt: "2026-06-18",
-        score: 28,
-        resolutionStatus: "Nevypořádáno",
-        resolution: "",
-        adminComment: "",
-        replies: [
-          {
-            id: "reply-1",
-            author: "Petr N.",
-            text: "Podporuji, zejména pro členy mimo místo jednoty.",
-          },
-        ],
-      },
-      {
-        id: "sub-2",
-        kind: "Návrh úpravy",
-        section: "§ 4 odst. 2",
-        title: "Stanovit lhůtu 30 dnů",
-        text: "Navrhuji nahradit neurčitou formulaci konkrétní lhůtou 30 kalendářních dnů.",
-        author: "Petr N.",
-        unit: "Sokol Praha Vršovice",
-        createdAt: "2026-06-20",
-        score: 17,
-        resolutionStatus: "Zapracováno",
-        resolution: "Přijato do pracovní verze 2.2; lhůta byla doplněna.",
-        adminComment: "Děkujeme za přesný a proveditelný návrh.",
-        replies: [],
-      },
-      {
-        id: "sub-3",
-        kind: "Komentář",
-        section: "§ 4 odst. 1",
-        title: "Věková hranice členského práva",
-        text: "Platí toto právo ve stejném rozsahu také pro členy mladší 18 let?",
-        author: "Marek S.",
-        unit: "TJ Sokol Liberec",
-        createdAt: "2026-06-22",
-        score: 6,
-        resolutionStatus: "Nezapracováno",
-        resolution:
-          "Rozsah práv nezletilých členů upravují stanovy; do tohoto řádu bude doplněn odkaz.",
-        adminComment: "",
-        replies: [],
-      },
-    ],
-  },
-  {
-    id: "norm-002",
-    number: "SOKOL-2026-002",
-    title: "Pravidla pro elektronické hlasování",
-    category: "Metodický pokyn",
-    version: "1.0",
-    status: "Vypořádání",
-    commentsOpen: false,
-    publishedAt: "2026-05-04",
-    deadline: "2026-06-30",
-    submittedBy: "Výbor České obce sokolské",
-    responsible: "Kancelář ČOS",
-    summary:
-      "Procesní pravidla pro ověření člena, bezpečné hlasování a zveřejnění výsledků.",
-    reason:
-      "Elektronické hlasování je používáno rozdílně a bez jednotných minimálních pravidel. Materiál stanovuje požadavky na identifikaci hlasujícího, auditní stopu, ochranu osobních údajů a řešení technických incidentů.",
-    file: null,
-    needVotes: { yes: 89, no: 11 },
-    sections: [
-      {
-        id: "security",
-        label: "Čl. 3",
-        title: "Ověření a bezpečnost",
-        paragraphs: [
-          "Každý hlasující člen musí být před hlasováním jednoznačně ověřen.",
-          "Systém uchovává auditní záznam bez zveřejnění obsahu tajného hlasování.",
-        ],
-      },
-    ],
-    submissions: [
-      {
-        id: "sub-4",
-        kind: "Komentář",
-        section: "Čl. 3 odst. 2",
-        title: "Doba uchování auditního záznamu",
-        text: "Doporučuji uvést konkrétní skartační lhůtu.",
-        author: "Eva T.",
-        unit: "Sokol Plzeň",
-        createdAt: "2026-05-21",
-        score: 13,
-        resolutionStatus: "Zapracováno",
-        resolution: "Doplněna lhůta 5 let od ukončení hlasování.",
-        adminComment: "",
-        replies: [],
-      },
-    ],
-  },
-  {
-    id: "norm-003",
-    number: "SOKOL-2026-003",
-    title: "Zásady péče o sokolský majetek",
-    category: "Směrnice",
-    version: "0.8",
-    status: "Koncept",
-    commentsOpen: false,
-    publishedAt: "",
-    deadline: "",
-    submittedBy: "Ekonomická komise ČOS",
-    responsible: "Majetkový odbor ČOS",
-    summary:
-      "Připravovaná pravidla evidence, údržby a odpovědnosti za společný majetek.",
-    reason:
-      "Materiál reaguje na rozdílnou praxi při evidenci a plánování oprav sokolského majetku.",
-    file: null,
-    needVotes: { yes: 0, no: 0 },
-    sections: [
-      {
-        id: "evidence",
-        label: "Čl. 2",
-        title: "Evidence majetku",
-        paragraphs: [
-          "Jednota vede průběžnou evidenci nemovitého a významného movitého majetku.",
-        ],
-      },
-    ],
-    submissions: [],
-  },
-];
+const initialNorms = createInitialState().norms;
 
 function dateLabel(value) {
   if (!value) return "neuvedeno";
@@ -218,7 +52,8 @@ function EmptyState({ children }) {
 
 export default function Home() {
   const [norms, setNorms] = useState(initialNorms);
-  const [hydrated, setHydrated] = useState(false);
+  const [services, setServices] = useState(null);
+  const [sessionId, setSessionId] = useState(null);
   const [view, setView] = useState("landing");
   const [selectedId, setSelectedId] = useState(initialNorms[0].id);
   const [adminId, setAdminId] = useState(initialNorms[0].id);
@@ -230,52 +65,97 @@ export default function Home() {
   const [needVote, setNeedVote] = useState(null);
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) setNorms(JSON.parse(saved));
-    } catch {
-      // Pilot remains usable with the bundled demo data.
-    }
-    setHydrated(true);
+    const repository = createBrowserRepository({ storage: window.localStorage });
+    const audit = createAuditService(repository, Date.now);
+    const auth = createAuthService({
+      repository,
+      audit,
+      cryptoAdapter: createCryptoAdapter(window.crypto),
+      now: Date.now,
+    });
+    const normService = createNormService({
+      repository,
+      auth,
+      audit,
+      fileRepository,
+      now: Date.now,
+    });
+    setServices({ repository, auth, normService });
+    setSessionId(window.sessionStorage.getItem(SESSION_STORAGE_KEY));
+    setNorms(repository.read().norms);
+    void auth
+      .ensureDemoCredentials()
+      .then(() => setNorms(repository.read().norms))
+      .catch(() => flash("Modelové účty se nepodařilo připravit."));
   }, []);
 
-  useEffect(() => {
-    if (hydrated) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(norms));
-  }, [hydrated, norms]);
-
+  const publicNorms = useMemo(
+    () => (services ? services.normService.listPublicNorms("Všechny") : initialNorms),
+    [norms, services],
+  );
+  const manageableNorms = useMemo(() => {
+    if (!services || !sessionId) return [];
+    try {
+      return services.normService.listManageable(sessionId);
+    } catch {
+      return [];
+    }
+  }, [norms, services, sessionId]);
   const selectedNorm = useMemo(
-    () => norms.find((norm) => norm.id === selectedId) || norms[0],
-    [norms, selectedId],
+    () => publicNorms.find((norm) => norm.id === selectedId) || publicNorms[0],
+    [publicNorms, selectedId],
   );
   const adminNorm = useMemo(
-    () => norms.find((norm) => norm.id === adminId) || norms[0],
-    [norms, adminId],
+    () => manageableNorms.find((norm) => norm.id === adminId) || manageableNorms[0],
+    [manageableNorms, adminId],
   );
   const filteredNorms = useMemo(() => {
-    if (filter === "Všechny") return norms;
+    if (services) return services.normService.listPublicNorms(filter);
+    if (filter === "Všechny") return initialNorms;
     if (filter === "Uzavřené") {
-      return norms.filter((norm) =>
+      return initialNorms.filter((norm) =>
         ["Schváleno", "Neschváleno", "Archivováno"].includes(norm.status),
       );
     }
-    return norms.filter((norm) =>
+    return initialNorms.filter((norm) =>
       ["K připomínkování", "Vypořádání", "Ke schválení"].includes(norm.status),
     );
-  }, [filter, norms]);
+  }, [filter, norms, services]);
 
   function flash(message) {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
   }
 
+  function refreshNorms() {
+    if (!services) return [];
+    const nextNorms = services.repository.read().norms;
+    setNorms(nextNorms);
+    return nextNorms;
+  }
+
+  function currentSessionId() {
+    return window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+  }
+
+  async function runMutation(operation) {
+    if (!services) {
+      flash("Aplikace se ještě připravuje.");
+      return null;
+    }
+    try {
+      const result = await operation(services.normService, currentSessionId());
+      refreshNorms();
+      flash(result.message);
+      return result;
+    } catch (error) {
+      flash(error?.message || "Operaci se nepodařilo dokončit.");
+      return null;
+    }
+  }
+
   function updateNorm(id, patch) {
-    setNorms((items) =>
-      items.map((norm) =>
-        norm.id === id
-          ? { ...norm, ...(typeof patch === "function" ? patch(norm) : patch) }
-          : norm,
-      ),
-    );
+    return runMutation((normService, sessionId) => normService.update(sessionId, id, patch));
   }
 
   function openNorm(id) {
@@ -290,17 +170,12 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function castVote(normId, submissionId, direction) {
+  async function castVote(normId, submissionId, direction) {
     const voteKey = `${normId}:${submissionId}`;
-    const previous = votes[voteKey] || 0;
-    updateNorm(normId, (norm) => ({
-      submissions: norm.submissions.map((item) =>
-        item.id === submissionId
-          ? { ...item, score: item.score - previous + direction }
-          : item,
-      ),
-    }));
-    setVotes((current) => ({ ...current, [voteKey]: direction }));
+    const result = await runMutation((normService, sessionId) =>
+      normService.voteSubmission(sessionId, normId, submissionId, direction),
+    );
+    if (result) setVotes((current) => ({ ...current, [voteKey]: result.vote }));
   }
 
   async function downloadDocument(norm) {
@@ -309,7 +184,7 @@ export default function Home() {
       return;
     }
     try {
-      const file = await readFile(norm.file.id);
+      const file = await fileRepository.readFile(norm.file.id);
       if (!file) throw new Error("Soubor nebyl nalezen");
       const url = URL.createObjectURL(file);
       const link = document.createElement("a");
@@ -324,149 +199,93 @@ export default function Home() {
 
   async function replaceDocument(norm, file) {
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      flash("Soubor může mít nejvýše 15 MB.");
-      return;
-    }
-    const fileId = `file-${norm.id}-${Date.now()}`;
-    try {
-      await storeFile(fileId, file);
-      await removeFile(norm.file?.id);
-      updateNorm(norm.id, {
-        file: { id: fileId, name: file.name, size: file.size, type: file.type },
-      });
-      flash("Dokument byl bezpečně uložen pro pilotní test.");
-    } catch {
-      flash("Soubor se nepodařilo uložit v tomto prohlížeči.");
-    }
+    await runMutation((normService, sessionId) =>
+      normService.replaceDocument(sessionId, norm.id, file),
+    );
   }
 
   async function deleteNorm(norm) {
     if (!window.confirm(`Opravdu smazat normu ${norm.number} – ${norm.title}?`)) return;
-    await removeFile(norm.file?.id);
-    setNorms((items) => items.filter((item) => item.id !== norm.id));
-    const fallback = norms.find((item) => item.id !== norm.id);
+    const result = await runMutation((normService, sessionId) =>
+      normService.remove(sessionId, norm.id),
+    );
+    if (!result) return;
+    const fallback = services.repository.read().norms[0];
     setAdminId(fallback?.id || "");
     setSelectedId(fallback?.id || "");
-    flash("Norma byla smazána.");
   }
 
-  function createNorm(event) {
+  async function createNorm(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const year = new Date().getFullYear();
-    const sequence =
-      Math.max(
-        0,
-        ...norms.map((norm) => Number.parseInt(norm.number.split("-").at(-1), 10) || 0),
-      ) + 1;
-    const id = `norm-${Date.now()}`;
     const file = form.get("file");
-    const newNorm = {
-      id,
-      number: `SOKOL-${year}-${String(sequence).padStart(3, "0")}`,
+    const input = {
       title: form.get("title").trim(),
       category: form.get("category").trim(),
       version: form.get("version").trim(),
       status: form.get("status"),
-      commentsOpen: form.get("status") === "K připomínkování",
-      publishedAt:
-        form.get("status") === "K připomínkování"
-          ? new Date().toISOString().slice(0, 10)
-          : "",
       deadline: form.get("deadline"),
       submittedBy: form.get("submittedBy").trim(),
       responsible: form.get("responsible").trim(),
       summary: form.get("summary").trim(),
       reason: form.get("reason").trim(),
-      file: null,
-      needVotes: { yes: 0, no: 0 },
-      sections: [
-        {
-          id: "document",
-          label: "Dokument",
-          title: "Text nahraného materiálu",
-          paragraphs: [
-            "Pro pilotní test je původní soubor dostupný ke stažení. Strukturovaný převod dokumentu bude doplněn v navazující integrační fázi.",
-          ],
-        },
-      ],
-      submissions: [],
     };
-    setNorms((items) => [...items, newNorm]);
-    setAdminId(id);
-    setSelectedId(id);
+    const result = await runMutation((normService, sessionId) =>
+      normService.create(
+        sessionId,
+        input,
+        file instanceof File && file.size > 0 ? file : undefined,
+      ),
+    );
+    if (!result) return;
+    setAdminId(result.norm.id);
+    setSelectedId(result.norm.id);
     setShowCreate(false);
-    if (file instanceof File && file.size > 0) {
-      window.setTimeout(() => replaceDocument(newNorm, file), 0);
-    }
-    flash(`Norma ${newNorm.number} byla založena.`);
   }
 
-  function submitContribution(event) {
+  async function submitContribution(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const kind = submissionMode === "proposal" ? "Návrh úpravy" : "Komentář";
-    const contribution = {
-      id: `sub-${Date.now()}`,
+    const result = await runMutation((normService, sessionId) =>
+      normService.addContribution(sessionId, selectedNorm.id, {
       kind,
       section: form.get("section").trim() || "Obecně",
       title: form.get("title").trim(),
       text: form.get("text").trim(),
-      author: form.get("author").trim(),
-      unit: form.get("unit").trim(),
-      createdAt: new Date().toISOString().slice(0, 10),
-      score: 0,
-      resolutionStatus: "Nevypořádáno",
-      resolution: "",
-      adminComment: "",
-      replies: [],
-    };
-    updateNorm(selectedNorm.id, (norm) => ({
-      submissions: [...norm.submissions, contribution],
-    }));
-    setSubmissionMode(null);
-    flash(`${kind} byl zveřejněn.`);
+      }),
+    );
+    if (result) setSubmissionMode(null);
   }
 
-  function addReply(event, normId, submissionId, author = "Předkladatel") {
+  async function addReply(event, normId, submissionId) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const text = form.get("reply").trim();
     if (!text) return;
-    updateNorm(normId, (norm) => ({
-      submissions: norm.submissions.map((item) =>
-        item.id === submissionId
-          ? {
-              ...item,
-              replies: [
-                ...(item.replies || []),
-                { id: `reply-${Date.now()}`, author, text },
-              ],
-            }
-          : item,
-      ),
-    }));
-    event.currentTarget.reset();
-    flash("Odpověď byla přidána.");
+    const result = await runMutation((normService, sessionId) =>
+      normService.reply(sessionId, normId, submissionId, text),
+    );
+    if (result) event.currentTarget.reset();
   }
 
-  function resolveSubmission(event, normId, submissionId) {
+  async function resolveSubmission(event, normId, submissionId) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    updateNorm(normId, (norm) => ({
-      submissions: norm.submissions.map((item) =>
-        item.id === submissionId
-          ? {
-              ...item,
-              resolutionStatus: form.get("resolutionStatus"),
-              resolution: form.get("resolution").trim(),
-              adminComment: form.get("adminComment").trim(),
-            }
-          : item,
-      ),
-    }));
-    flash("Vypořádání bylo uloženo a je viditelné členům.");
+    await runMutation((normService, sessionId) =>
+      normService.resolveSubmission(sessionId, normId, submissionId, {
+        resolutionStatus: form.get("resolutionStatus"),
+        resolution: form.get("resolution").trim(),
+        adminComment: form.get("adminComment").trim(),
+      }),
+    );
+  }
+
+  async function castNeedVote(normId, value) {
+    const result = await runMutation((normService, sessionId) =>
+      normService.voteNeed(sessionId, normId, value),
+    );
+    if (result) setNeedVote(result.vote);
   }
 
   return (
@@ -514,26 +333,43 @@ export default function Home() {
               </div>
             </div>
             <div className="normGrid">
-              {filteredNorms.length ? filteredNorms.map((norm) => (
-                <article className="normCard" key={norm.id}>
-                  <div className="cardTop"><span className="normNumber">{norm.number}</span><StatusBadge value={norm.status} /></div>
-                  <p className="category">{norm.category} · verze {norm.version}</p>
-                  <h3>{norm.title}</h3>
-                  <p className="summary">{norm.summary}</p>
-                  <dl>
-                    <div><dt>Předkládá</dt><dd>{norm.submittedBy}</dd></div>
-                    <div><dt>Odpovídá</dt><dd>{norm.responsible}</dd></div>
-                    <div><dt>Připomínky</dt><dd>{norm.commentsOpen ? `do ${dateLabel(norm.deadline)}` : "uzavřeny"}</dd></div>
-                  </dl>
-                  <div className="cardFooter"><span>{norm.submissions.length} podnětů</span><button onClick={() => openNorm(norm.id)}>Otevřít materiál →</button></div>
-                </article>
-              )) : <EmptyState>V této skupině zatím nejsou žádné normy.</EmptyState>}
+              {filteredNorms.length ? filteredNorms.map((norm) =>
+                norm.visibilityMode === "title-only" ? (
+                  <article className="normCard" key={norm.id}>
+                    <h3>{norm.title}</h3>
+                    <p className="summary">Detail této normy je dostupný po přihlášení.</p>
+                    <div className="cardFooter"><button onClick={() => openNorm(norm.id)}>Otevřít materiál →</button></div>
+                  </article>
+                ) : (
+                  <article className="normCard" key={norm.id}>
+                    <div className="cardTop"><span className="normNumber">{norm.number}</span><StatusBadge value={norm.status} /></div>
+                    <p className="category">{norm.category} · verze {norm.version}</p>
+                    <h3>{norm.title}</h3>
+                    <p className="summary">{norm.summary}</p>
+                    <dl>
+                      <div><dt>Předkládá</dt><dd>{norm.submittedBy}</dd></div>
+                      <div><dt>Odpovídá</dt><dd>{norm.responsible}</dd></div>
+                      <div><dt>Připomínky</dt><dd>{norm.commentsOpen ? `do ${dateLabel(norm.deadline)}` : "uzavřeny"}</dd></div>
+                    </dl>
+                    <div className="cardFooter"><span>{norm.submissions.length} podnětů</span><button onClick={() => openNorm(norm.id)}>Otevřít materiál →</button></div>
+                  </article>
+                ),
+              ) : <EmptyState>V této skupině zatím nejsou žádné normy.</EmptyState>}
             </div>
           </section>
         </>
       )}
 
-      {view === "detail" && selectedNorm && (
+      {view === "detail" && selectedNorm?.visibilityMode === "title-only" && (
+        <section className="detailPage">
+          <button className="backButton" onClick={() => setView("landing")}>← Zpět na seznam norem</button>
+          <div className="detailHeader">
+            <div><h1>{selectedNorm.title}</h1><p>Detail této normy je dostupný po přihlášení.</p></div>
+          </div>
+        </section>
+      )}
+
+      {view === "detail" && selectedNorm && selectedNorm.visibilityMode !== "title-only" && (
         <section className="detailPage">
           <button className="backButton" onClick={() => setView("landing")}>← Zpět na seznam norem</button>
           <div className="detailHeader">
@@ -576,16 +412,8 @@ export default function Home() {
                 <div className="needVote">
                   <div><b>Je přijetí této normy potřebné?</b><p>Orientační hlasování členů není konečným schválením normy.</p></div>
                   <div>
-                    <button className={needVote === "yes" ? "selected yes" : ""} onClick={() => {
-                      if (needVote) return;
-                      setNeedVote("yes");
-                      updateNorm(selectedNorm.id, (norm) => ({ needVotes: { ...norm.needVotes, yes: norm.needVotes.yes + 1 } }));
-                    }}>Ano {selectedNorm.needVotes.yes}</button>
-                    <button className={needVote === "no" ? "selected no" : ""} onClick={() => {
-                      if (needVote) return;
-                      setNeedVote("no");
-                      updateNorm(selectedNorm.id, (norm) => ({ needVotes: { ...norm.needVotes, no: norm.needVotes.no + 1 } }));
-                    }}>Ne {selectedNorm.needVotes.no}</button>
+                    <button className={needVote === "yes" ? "selected yes" : ""} onClick={() => castNeedVote(selectedNorm.id, "yes")}>Ano {selectedNorm.needVotes.yes}</button>
+                    <button className={needVote === "no" ? "selected no" : ""} onClick={() => castNeedVote(selectedNorm.id, "no")}>Ne {selectedNorm.needVotes.no}</button>
                   </div>
                 </div>
               </div>
@@ -610,7 +438,7 @@ export default function Home() {
                       </div>
                     )}
                     {(item.replies || []).map((reply) => <div className="reply" key={reply.id}><b>{reply.author}</b><p>{reply.text}</p></div>)}
-                    {selectedNorm.commentsOpen && <form className="replyForm" onSubmit={(event) => addReply(event, selectedNorm.id, item.id, "Člen")}><input name="reply" aria-label="Odpověď" placeholder="Odpovědět…" required /><button>Odeslat</button></form>}
+                    {selectedNorm.commentsOpen && <form className="replyForm" onSubmit={(event) => addReply(event, selectedNorm.id, item.id)}><input name="reply" aria-label="Odpověď" placeholder="Odpovědět…" required /><button>Odeslat</button></form>}
                     <div className="voteRow"><span>Je tento podnět důležitý?</span><div><button className={votes[voteKey] === 1 ? "selected" : ""} onClick={() => castVote(selectedNorm.id, item.id, 1)}>↑</button><b>{item.score}</b><button className={votes[voteKey] === -1 ? "selected down" : ""} onClick={() => castVote(selectedNorm.id, item.id, -1)}>↓</button></div></div>
                   </article>
                 );
@@ -628,7 +456,7 @@ export default function Home() {
           </div>
           <div className="adminLayout">
             <aside className="adminNormList">
-              {norms.map((norm) => <button key={norm.id} className={norm.id === adminNorm?.id ? "active" : ""} onClick={() => setAdminId(norm.id)}><span>{norm.number}</span><b>{norm.title}</b><StatusBadge value={norm.status} /></button>)}
+              {manageableNorms.map((norm) => <button key={norm.id} className={norm.id === adminNorm?.id ? "active" : ""} onClick={() => setAdminId(norm.id)}><span>{norm.number}</span><b>{norm.title}</b><StatusBadge value={norm.status} /></button>)}
             </aside>
             {adminNorm ? (
               <div className="adminWorkspace">
@@ -681,8 +509,7 @@ export default function Home() {
           <form className="modal" onSubmit={submitContribution} onMouseDown={(event) => event.stopPropagation()}>
             <button type="button" className="modalClose" onClick={() => setSubmissionMode(null)}>×</button>
             <p className="kicker">{selectedNorm.number}</p><h2>{submissionMode === "proposal" ? "Nový návrh změny" : "Nový komentář"}</h2>
-            <label>Jméno<input name="author" required placeholder="Jan Novák" /></label>
-            <label>Jednota / župa<input name="unit" required placeholder="TJ Sokol…" /></label>
+            <p>Jméno a jednota se bezpečně převezmou z přihlášeného účtu.</p>
             <label>Část dokumentu<input name="section" placeholder="např. § 4 odst. 2" /></label>
             <label>Název<input name="title" required placeholder="Stručné pojmenování podnětu" /></label>
             <label>{submissionMode === "proposal" ? "Navrhované znění a odůvodnění" : "Komentář"}<textarea name="text" required /></label>
