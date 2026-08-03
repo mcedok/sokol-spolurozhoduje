@@ -13,3 +13,17 @@ export function createMemoryStorage() {
     },
   };
 }
+
+export function createFakeClock(initial = Date.parse("2026-08-03T12:00:00.000Z")) {
+  let current = initial;
+
+  return {
+    now() {
+      return current;
+    },
+    advance(milliseconds) {
+      current += milliseconds;
+      return current;
+    },
+  };
+}

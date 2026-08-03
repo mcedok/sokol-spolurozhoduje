@@ -14,6 +14,8 @@ const DEMO_USERS = [
     role: ROLE.SUPERADMIN,
     status: USER_STATUS.ACTIVE,
     emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+    passwordHash: null,
+    passwordSalt: null,
   },
   {
     id: "user-admin-demo",
@@ -23,6 +25,8 @@ const DEMO_USERS = [
     role: ROLE.ADMIN,
     status: USER_STATUS.ACTIVE,
     emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+    passwordHash: null,
+    passwordSalt: null,
   },
 ];
 
