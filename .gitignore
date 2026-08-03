@@ -6,5 +6,6 @@ tmp/
 *.log
 next-env.d.ts
 .env*
+.worktrees/
 Fonty Písma/
 *.pdf
