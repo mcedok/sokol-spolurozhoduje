@@ -119,7 +119,7 @@ describe("AuthDialog", () => {
     await user.click(screen.getByRole("button", { name: "Poslat odkaz pro obnovu" }));
 
     expect(await screen.findByText(/Pokud účet existuje, odkaz pro obnovu byl vytvořen/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Otevřít odkaz" }));
+    await user.click(screen.getByRole("button", { name: /^Otevřít odkaz pro/ }));
     await waitFor(() => expect(screen.getByLabelText("Nové heslo")).toHaveFocus());
     await user.type(screen.getByLabelText("Nové heslo"), "slabe");
     await user.click(screen.getByRole("button", { name: "Nastavit nové heslo" }));

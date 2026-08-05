@@ -22,6 +22,7 @@
 }
 
 * { box-sizing: border-box; }
+.srOnly { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
 html { scroll-behavior: smooth; }
 html, body { margin: 0; min-height: 100%; background: var(--canvas); color: var(--ink); }
 body { font-family: Arial, "Segoe UI", sans-serif; font-size: 15px; }
@@ -236,6 +237,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
 .demoInboxHeading h3, .demoCredentials h3 { margin: 2px 0 10px; font-size: 16px; }
 .demoInbox ul, .demoCredentials ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .demoInbox li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 8px; border-top: 1px solid var(--line); font-family: "Sokol Fugner", monospace; font-size: 13px; }
+.demoDeliveryInfo { display: grid; gap: 3px; }
+.demoDeliveryInfo small { color: var(--muted); font-family: Arial, sans-serif; font-size: 10px; overflow-wrap: anywhere; }
 .demoInbox li button { border: 1px solid var(--line); background: white; border-radius: 4px; padding: 7px 9px; cursor: pointer; font-family: Arial, sans-serif; font-size: 10px; font-weight: 800; }
 .demoCredentials { background: var(--canvas); }
 .demoWarning { display: inline-block; margin-bottom: 10px; color: var(--red-dark); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
@@ -374,11 +377,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
   .userAdministrationLayout { display: block; }
   .userTableWrap { overflow: visible; border: 0; background: transparent; }
   .userTable, .userTable tbody, .userTable tr, .userTable th, .userTable td { display: block; width: 100%; }
-  .userTable thead { display: none; }
+  .userTable thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .userTable tbody { display: grid; gap: 9px; }
   .userTable tbody tr { padding: 14px; border: 1px solid var(--line); background: white; }
   .userTable tbody tr.selected { box-shadow: inset 4px 0 var(--red); }
   .userTable th, .userTable td { padding: 5px 0; border: 0; }
+  .userTable tbody td::before { display: block; margin-bottom: 3px; color: var(--muted); content: attr(data-label); font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
   .userTable td:nth-child(2) { color: var(--muted); font-size: 11px; }
   .userTable td:nth-child(3), .userTable td:nth-child(4) { display: inline-block; width: auto; margin: 6px 6px 0 0; }
   .userRowButton { min-height: 44px; }

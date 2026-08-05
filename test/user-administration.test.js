@@ -8,6 +8,7 @@ import {
   UserAdministration,
 } from "../app/components/admin/UserAdministration.js";
 import { AuthDialog } from "../app/components/auth/AuthDialog.js";
+import { DemoInbox } from "../app/components/auth/DemoInbox.js";
 import { useAppController } from "../app/hooks/use-app-controller.js";
 
 const superadmin = {
@@ -184,6 +185,12 @@ describe("administrace uživatelů", () => {
     expect(summary.getByText("Pozvaní").closest(".userSummaryCard")).toHaveTextContent("1");
     expect(summary.getByText("Blokovaní").closest(".userSummaryCard")).toHaveTextContent("1");
     expect(screen.getByRole("table", { name: "Uživatelé" })).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual([
+      "Uživatel",
+      "Jednota / členské ID",
+      "Role",
+      "Stav",
+    ]);
 
     const search = screen.getByRole("searchbox", { name: "Hledat uživatele" });
     await user.type(search, "Brno I");
@@ -203,7 +210,11 @@ describe("administrace uživatelů", () => {
 
     await user.selectOptions(screen.getByRole("combobox", { name: "Role" }), "");
     await user.selectOptions(screen.getByRole("combobox", { name: "Stav" }), "");
-    await user.click(screen.getByRole("button", { name: "Otevřít detail Jana Nováková" }));
+    const janaRow = screen.getByRole("button", {
+      name: /Otevřít detail Jana Nováková.*jana@example\.cz.*TJ Sokol Brno I.*MEMBER-BRNO-42.*Člen.*Aktivní/i,
+    });
+    janaRow.focus();
+    await user.keyboard("{Enter}");
 
     expect(screen.getByRole("heading", { name: "Jana Nováková" })).toBeInTheDocument();
     expect(screen.getByText("MEMBER-BRNO-42", { selector: ".userDetailPanel *" })).toBeInTheDocument();
@@ -252,7 +263,7 @@ describe("administrace uživatelů", () => {
     await user.click(screen.getByRole("button", { name: "Uložit roli" }));
     expect(calls.changeUserRole).toHaveBeenCalledWith("member-brno", "admin", undefined);
 
-    await user.click(screen.getByRole("button", { name: "Otevřít detail Alena Správcová" }));
+    await user.click(screen.getByRole("button", { name: /^Otevřít detail Alena Správcová/ }));
     await user.selectOptions(screen.getByRole("combobox", { name: "Role účtu" }), "member");
     await user.click(screen.getByRole("button", { name: "Uložit roli" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Vyberte nového vlastníka norem");
@@ -318,6 +329,118 @@ describe("administrace uživatelů", () => {
     });
     expect(result.current.authMode).toBe("set-password");
     expect(result.current.authDelivery).toEqual(delivery);
+  });
+
+  it("řadič nahrazuje rotovaný setup stejného uživatele a zachová různé příjemce", async () => {
+    const { result } = renderHook(() => useAppController());
+    await waitFor(() => expect(result.current.actions.ready).toBe(true), { timeout: 5000 });
+    await act(async () => {
+      const session = await result.current.services.auth.loginWithPassword({
+        email: "superadmin@sokol.demo",
+        password: "SuperSokol!2026",
+      });
+      result.current.actions.authenticated(session);
+    });
+
+    await act(async () => {
+      await result.current.userAdministration.actions.createUser({
+        firstName: "Eva",
+        lastName: "Nová",
+        email: "eva.rotation@example.cz",
+        sokolUnit: "TJ Sokol Olomouc",
+        membershipId: "ROTATION-1",
+        role: "admin",
+      });
+      await result.current.userAdministration.actions.createUser({
+        firstName: "Anna",
+        lastName: "Druhá",
+        email: "anna.rotation@example.cz",
+        sokolUnit: "TJ Sokol Brno",
+        membershipId: "ROTATION-2",
+        role: "admin",
+      });
+    });
+    const [evaOriginal, annaDelivery] = result.current.userAdministration.setupDeliveries;
+
+    await act(async () => {
+      await result.current.userAdministration.actions.changeUserRole(
+        evaOriginal.userId,
+        "superadmin",
+      );
+    });
+
+    const deliveries = result.current.userAdministration.setupDeliveries;
+    expect(deliveries).toHaveLength(2);
+    expect(deliveries).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        userId: annaDelivery.userId,
+        challengeId: annaDelivery.challengeId,
+        recipientEmail: "anna.rotation@example.cz",
+      }),
+      expect.objectContaining({
+        userId: evaOriginal.userId,
+        recipientEmail: "eva.rotation@example.cz",
+      }),
+    ]));
+    expect(deliveries.find((delivery) => delivery.userId === evaOriginal.userId).challengeId).not.toBe(
+      evaOriginal.challengeId,
+    );
+
+    const rotatedEva = deliveries.find((delivery) => delivery.userId === evaOriginal.userId);
+    await act(async () => {
+      await result.current.userAdministration.actions.setUserStatus(evaOriginal.userId, "blocked");
+      await result.current.userAdministration.actions.setUserStatus(evaOriginal.userId, "active");
+    });
+
+    const reactivated = result.current.userAdministration.setupDeliveries;
+    expect(reactivated).toHaveLength(2);
+    expect(reactivated.find((delivery) => delivery.userId === evaOriginal.userId)).toMatchObject({
+      recipientLabel: "Eva Nová",
+      recipientEmail: "eva.rotation@example.cz",
+    });
+    expect(reactivated.find((delivery) => delivery.userId === evaOriginal.userId).challengeId).not.toBe(
+      rotatedEva.challengeId,
+    );
+
+    const administration = result.current.userAdministration;
+    render(createElement(UserAdministration, {
+      currentUser: result.current.currentUser,
+      users: administration.users,
+      selectedUser: administration.selectedUser,
+      auditEvents: administration.auditEvents,
+      summary: administration.summary,
+      filters: administration.filters,
+      setupDeliveries: administration.setupDeliveries,
+      actions: administration.actions,
+    }));
+    expect(screen.getByText("Eva Nová · eva.rotation@example.cz")).toBeInTheDocument();
+  });
+
+  it("simulovaná schránka pojmenuje každé doručení příjemcem", () => {
+    const deliveries = [
+      {
+        kind: "set_password",
+        challengeId: "challenge-eva",
+        userId: "user-eva",
+        recipientLabel: "Eva Nová",
+        recipientEmail: "eva@example.cz",
+        demoToken: "eva-secret",
+      },
+      {
+        kind: "set_password",
+        challengeId: "challenge-anna",
+        userId: "user-anna",
+        recipientLabel: "Anna Druhá",
+        recipientEmail: "anna@example.cz",
+        demoToken: "anna-secret",
+      },
+    ];
+    render(createElement(DemoInbox, { deliveries, onOpenLink: vi.fn() }));
+
+    expect(screen.getByText("Eva Nová · eva@example.cz")).toBeInTheDocument();
+    expect(screen.getByText("Anna Druhá · anna@example.cz")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Otevřít odkaz pro Eva Nová" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Otevřít odkaz pro Anna Druhá" })).toBeInTheDocument();
   });
 
   it("předá odkaz pro první heslo do existujícího autentizačního dialogu", async () => {

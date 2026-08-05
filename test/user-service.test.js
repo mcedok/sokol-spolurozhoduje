@@ -159,9 +159,9 @@ describe("user service", () => {
   it("refuses to block or demote the last active superadministrator without changing state", async () => {
     const { repository, superadminSession, users } = harness;
 
-    expect(() =>
+    await expect(
       users.setUserStatus(superadminSession.id, superadminSession.userId, USER_STATUS.BLOCKED),
-    ).toThrow(expect.objectContaining({ code: "LAST_ACTIVE_SUPERADMIN" }));
+    ).rejects.toMatchObject({ code: "LAST_ACTIVE_SUPERADMIN" });
     await expect(
       users.changeUserRole(superadminSession.id, superadminSession.userId, ROLE.ADMIN),
     ).rejects.toMatchObject({ code: "LAST_ACTIVE_SUPERADMIN" });
@@ -177,7 +177,7 @@ describe("user service", () => {
     const { adminSession, auth, repository, superadminSession, users } = harness;
     const resetDelivery = await auth.requestPasswordReset(MODEL_CREDENTIALS.admin.email);
 
-    users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED);
+    await users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED);
 
     const state = repository.read();
     expect(state.users.find((user) => user.id === adminSession.userId).status).toBe(
@@ -187,6 +187,80 @@ describe("user service", () => {
     expect(
       state.challenges.find((challenge) => challenge.id === resetDelivery.challengeId).revokedAt,
     ).not.toBeNull();
+  });
+
+  it("reactivates a blocked invited administrator only through a fresh password setup", async () => {
+    const { auth, repository, superadminSession, users } = harness;
+    const oldDelivery = await users.createPrivilegedUser(
+      superadminSession.id,
+      privilegedProfile({ email: "reactivated-admin@example.cz" }),
+    );
+
+    await users.setUserStatus(superadminSession.id, oldDelivery.userId, USER_STATUS.BLOCKED);
+    await expect(
+      auth.completePasswordSetup({ token: oldDelivery.demoToken, password: "OldSetup!2026" }),
+    ).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+
+    const newDelivery = await users.setUserStatus(
+      superadminSession.id,
+      oldDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+
+    expect(newDelivery).toMatchObject({
+      kind: "set_password",
+      userId: oldDelivery.userId,
+      recipientEmail: "reactivated-admin@example.cz",
+      recipientLabel: "Alena Spravcova",
+      demoToken: expect.any(String),
+    });
+    expect(newDelivery.challengeId).not.toBe(oldDelivery.challengeId);
+    expect(repository.read().users.find((user) => user.id === oldDelivery.userId).status).toBe(
+      USER_STATUS.INVITED,
+    );
+
+    await auth.completePasswordSetup({
+      token: newDelivery.demoToken,
+      password: "FreshSetup!2026",
+    });
+    expect(repository.read().users.find((user) => user.id === oldDelivery.userId)).toMatchObject({
+      status: USER_STATUS.ACTIVE,
+      passwordHash: expect.any(String),
+    });
+  });
+
+  it("restores blocked members according to their e-mail verification state", async () => {
+    const { auth, repository, superadminSession, users } = harness;
+    const pendingDelivery = await auth.registerMember(
+      memberProfile({ email: "pending-reactivation@example.cz" }),
+    );
+
+    await users.setUserStatus(superadminSession.id, pendingDelivery.userId, USER_STATUS.BLOCKED);
+    const pending = await users.setUserStatus(
+      superadminSession.id,
+      pendingDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+    expect(pending.status).toBe(USER_STATUS.PENDING);
+
+    const verifiedDelivery = await auth.registerMember(
+      memberProfile({ email: "verified-reactivation@example.cz", membershipId: "VERIFIED-7" }),
+    );
+    await auth.verifyMemberCode({
+      challengeId: verifiedDelivery.challengeId,
+      code: verifiedDelivery.demoCode,
+    });
+    await users.setUserStatus(superadminSession.id, verifiedDelivery.userId, USER_STATUS.BLOCKED);
+    const active = await users.setUserStatus(
+      superadminSession.id,
+      verifiedDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+
+    expect(active.status).toBe(USER_STATUS.ACTIVE);
+    expect(repository.read().users.find((user) => user.id === pendingDelivery.userId).status).toBe(
+      USER_STATUS.PENDING,
+    );
   });
 
   it("requires an active administrator target and transfers every owned norm atomically on demotion", async () => {
@@ -421,7 +495,7 @@ describe("user service", () => {
       superadminSession.id,
       privilegedProfile({ email: "audit-admin@example.cz" }),
     );
-    users.setUserStatus(superadminSession.id, delivery.userId, USER_STATUS.BLOCKED);
+    await users.setUserStatus(superadminSession.id, delivery.userId, USER_STATUS.BLOCKED);
     users.changeUserRole(
       superadminSession.id,
       adminSession.userId,

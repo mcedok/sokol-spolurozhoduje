@@ -6,6 +6,10 @@ function deliveryLabel(delivery) {
   return "Odkaz pro obnovu hesla";
 }
 
+function recipientIdentity(delivery) {
+  return [delivery.recipientLabel, delivery.recipientEmail].filter(Boolean).join(" · ");
+}
+
 export function DemoInbox({ deliveries = [], onUseCode, onOpenLink }) {
   if (!deliveries.length) return null;
 
@@ -19,16 +23,32 @@ export function DemoInbox({ deliveries = [], onUseCode, onOpenLink }) {
     h(
       "ul",
       null,
-      deliveries.map((delivery) =>
-        h(
+      deliveries.map((delivery) => {
+        const identity = recipientIdentity(delivery);
+        const recipientName = delivery.recipientLabel || delivery.recipientEmail;
+        const actionLabel = delivery.demoCode ? "Použít kód" : "Otevřít odkaz";
+        return h(
           "li",
-          { key: delivery.challengeId || `${delivery.kind}-${delivery.demoCode || delivery.demoToken}` },
-          h("span", null, deliveryLabel(delivery)),
+          { key: delivery.challengeId || `${delivery.kind}-${delivery.userId}` },
+          h(
+            "span",
+            { className: "demoDeliveryInfo" },
+            h("strong", null, deliveryLabel(delivery)),
+            identity && h("small", null, identity),
+          ),
           delivery.demoCode
-            ? h("button", { type: "button", onClick: () => onUseCode?.(delivery) }, "Použít kód")
-            : h("button", { type: "button", onClick: () => onOpenLink?.(delivery) }, "Otevřít odkaz"),
-        ),
-      ),
+            ? h("button", {
+              type: "button",
+              "aria-label": recipientName ? `${actionLabel} pro ${recipientName}` : undefined,
+              onClick: () => onUseCode?.(delivery),
+            }, actionLabel)
+            : h("button", {
+              type: "button",
+              "aria-label": recipientName ? `${actionLabel} pro ${recipientName}` : undefined,
+              onClick: () => onOpenLink?.(delivery),
+            }, actionLabel),
+        );
+      }),
     ),
   );
 }

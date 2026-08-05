@@ -182,7 +182,14 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
     );
     repository.update((state) => state.challenges.push(challenge));
     record("auth.member_code_requested", user.id, user.id, { challengeId: challenge.id });
-    return { kind: "member_code", challengeId: challenge.id, userId: user.id, demoCode };
+    return {
+      kind: "member_code",
+      challengeId: challenge.id,
+      userId: user.id,
+      recipientLabel: `${user.firstName} ${user.lastName}`.trim(),
+      recipientEmail: user.email,
+      demoCode,
+    };
   }
 
   async function registerMember(profile) {
@@ -296,6 +303,8 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
       kind: type === CHALLENGE_TYPE.SET_PASSWORD ? "password_setup" : "password_reset_requested",
       challengeId: challenge.id,
       userId: user.id,
+      recipientLabel: `${user.firstName} ${user.lastName}`.trim(),
+      recipientEmail: user.email,
       demoToken,
     };
   }

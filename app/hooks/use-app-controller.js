@@ -150,7 +150,10 @@ export function useAppController({ createServices = createDefaultServices } = {}
   const enqueueSetupDelivery = useCallback((delivery) => {
     if (!delivery?.demoToken || delivery.kind !== "set_password") return;
     setSetupDeliveries((current) => [
-      ...current.filter((candidate) => candidate.challengeId !== delivery.challengeId),
+      ...current.filter(
+        (candidate) =>
+          candidate.userId !== delivery.userId || candidate.kind !== delivery.kind,
+      ),
       delivery,
     ]);
   }, []);
@@ -167,8 +170,12 @@ export function useAppController({ createServices = createDefaultServices } = {}
 
   const setUserStatus = useCallback(async (userId, status) => {
     if (!session?.id) return null;
-    return mutate((bundle) => bundle.userService.setUserStatus(session.id, userId, status));
-  }, [mutate, session?.id]);
+    const result = await mutate((bundle) =>
+      bundle.userService.setUserStatus(session.id, userId, status),
+    );
+    enqueueSetupDelivery(result);
+    return result;
+  }, [enqueueSetupDelivery, mutate, session?.id]);
 
   const changeUserRole = useCallback(async (userId, role, transferNormsToUserId) => {
     if (!session?.id) return null;

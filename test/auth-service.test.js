@@ -71,12 +71,21 @@ describe("auth service", () => {
 
     const demoDelivery = await auth.requestMemberCode(MODEL_CREDENTIALS.member.email);
     expect(demoDelivery.demoCode).toBe(MODEL_CREDENTIALS.member.code);
+    expect(demoDelivery).toMatchObject({
+      userId: "user-member-demo",
+      recipientLabel: "Modelov\u00fd \u010clen",
+      recipientEmail: MODEL_CREDENTIALS.member.email,
+    });
     await expect(
       auth.verifyMemberCode({ challengeId: demoDelivery.challengeId, code: MODEL_CREDENTIALS.member.code }),
     ).resolves.toMatchObject({ userId: "user-member-demo" });
 
     const delivery = await auth.registerMember(memberProfile({ email: "random-code@example.cz" }));
     expect(delivery.demoCode).toBe("123456");
+    expect(delivery).toMatchObject({
+      recipientLabel: "Jan Novak",
+      recipientEmail: "random-code@example.cz",
+    });
   });
 
   it("keeps exact demo credentials bound to seeded roles when stored emails collide", async () => {

@@ -177,20 +177,42 @@ export function createUserService({ repository, auth, audit, now }) {
     return asSetPasswordDelivery(delivery);
   }
 
-  function setUserStatus(sessionId, userId, status) {
+  async function setUserStatus(sessionId, userId, status) {
     const actor = getManagingActor(sessionId);
     if (!MANAGED_STATUSES.has(status)) throw new UserServiceError("INVALID_STATUS");
     const state = repository.read();
     const user = findUser(userId, state);
-    assertNotLastActiveSuperadmin(state, user, user.role, status);
+    const requiresPasswordSetup =
+      user.status === USER_STATUS.BLOCKED &&
+      status === USER_STATUS.ACTIVE &&
+      PRIVILEGED_ROLES.has(user.role) &&
+      !user.passwordHash;
+    const nextStatus = requiresPasswordSetup
+      ? USER_STATUS.INVITED
+      : user.role === ROLE.MEMBER && status === USER_STATUS.ACTIVE && !user.emailVerifiedAt
+        ? USER_STATUS.PENDING
+        : status;
+    assertNotLastActiveSuperadmin(state, user, user.role, nextStatus);
     const oldStatus = user.status;
-    if (oldStatus === status) return publicUser(user);
+    if (oldStatus === nextStatus) return publicUser(user);
+    const operationSnapshot = snapshotUserOperation(state, userId);
 
     repository.update((draft) => {
-      findUser(userId, draft).status = status;
+      findUser(userId, draft).status = nextStatus;
     });
     if (status === USER_STATUS.BLOCKED) revokeAuthentication(userId);
-    recordUserChange(actor.id, "user.status_changed", userId, { oldStatus, newStatus: status });
+    let delivery;
+    if (requiresPasswordSetup) {
+      revokeAuthentication(userId);
+      try {
+        delivery = await auth.createPasswordSetup(sessionId, userId);
+      } catch (error) {
+        rollbackUserOperation(userId, operationSnapshot);
+        throw error;
+      }
+    }
+    recordUserChange(actor.id, "user.status_changed", userId, { oldStatus, newStatus: nextStatus });
+    if (requiresPasswordSetup) return asSetPasswordDelivery(delivery);
     return publicUser(findUser(userId));
   }
 

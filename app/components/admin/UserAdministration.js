@@ -94,45 +94,49 @@ function UserTable({ users, selectedUser, onSelect }) {
       { className: "userTable", "aria-label": "Uživatelé" },
       h(
         "thead",
-        null,
+        { role: "rowgroup" },
         h(
           "tr",
-          null,
-          h("th", { scope: "col" }, "Uživatel"),
-          h("th", { scope: "col" }, "Jednota / členské ID"),
-          h("th", { scope: "col" }, "Role"),
-          h("th", { scope: "col" }, "Stav"),
+          { role: "row" },
+          h("th", { scope: "col", role: "columnheader" }, "Uživatel"),
+          h("th", { scope: "col", role: "columnheader" }, "Jednota / členské ID"),
+          h("th", { scope: "col", role: "columnheader" }, "Role"),
+          h("th", { scope: "col", role: "columnheader" }, "Stav"),
         ),
       ),
       h(
         "tbody",
-        null,
+        { role: "rowgroup" },
         users.length
           ? users.map((user) =>
             h(
               "tr",
-              { key: user.id, className: selectedUser?.id === user.id ? "selected" : "" },
+              { key: user.id, role: "row", className: selectedUser?.id === user.id ? "selected" : "" },
               h(
                 "th",
-                { scope: "row" },
+                { scope: "row", role: "rowheader" },
                 h(
                   "button",
                   {
                     type: "button",
                     className: "userRowButton",
-                    "aria-label": `Otevřít detail ${fullName(user)}`,
                     onClick: () => onSelect?.(user.id),
                   },
-                  h("strong", null, fullName(user)),
-                  h("span", null, user.email),
+                  h(
+                    "span",
+                    { className: "srOnly" },
+                    `Otevřít detail ${fullName(user)}; ${user.email}; ${user.sokolUnit}; ${user.membershipId}; ${ROLE_LABELS[user.role] || user.role}; ${STATUS_LABELS[user.status] || user.status}`,
+                  ),
+                  h("strong", { "aria-hidden": true }, fullName(user)),
+                  h("span", { "aria-hidden": true }, user.email),
                 ),
               ),
-              h("td", null, h("span", null, user.sokolUnit), h("small", null, user.membershipId)),
-              h("td", null, h("span", { className: `userRole ${user.role}` }, ROLE_LABELS[user.role] || user.role)),
-              h("td", null, h("span", { className: `userStatus ${user.status}` }, STATUS_LABELS[user.status] || user.status)),
+              h("td", { role: "cell", "data-label": "Jednota / členské ID" }, h("span", null, user.sokolUnit), h("small", null, user.membershipId)),
+              h("td", { role: "cell", "data-label": "Role" }, h("span", { className: `userRole ${user.role}` }, ROLE_LABELS[user.role] || user.role)),
+              h("td", { role: "cell", "data-label": "Stav" }, h("span", { className: `userStatus ${user.status}` }, STATUS_LABELS[user.status] || user.status)),
             ),
           )
-          : h("tr", null, h("td", { colSpan: 4, className: "userTableEmpty" }, "Filtru neodpovídá žádný uživatel.")),
+          : h("tr", { role: "row" }, h("td", { role: "cell", colSpan: 4, className: "userTableEmpty" }, "Filtru neodpovídá žádný uživatel.")),
       ),
     ),
   );
