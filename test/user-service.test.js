@@ -35,10 +35,19 @@ function privilegedProfile(overrides = {}) {
   };
 }
 
-async function createHarness() {
+async function createHarness({ beforeHash } = {}) {
   const clock = createFakeClock();
   const repository = createBrowserRepository({ storage: createMemoryStorage() });
-  const cryptoAdapter = createCryptoAdapter(globalThis.crypto);
+  const baseCryptoAdapter = createCryptoAdapter(globalThis.crypto);
+  const cryptoAdapter = beforeHash
+    ? {
+      ...baseCryptoAdapter,
+      async hashSecret(secret) {
+        await beforeHash(secret);
+        return baseCryptoAdapter.hashSecret(secret);
+      },
+    }
+    : baseCryptoAdapter;
   const audit = createAuditService(repository, clock.now);
   const auth = createAuthService({ repository, audit, cryptoAdapter, now: clock.now });
   const users = createUserService({ repository, auth, audit, now: clock.now });
@@ -227,6 +236,107 @@ describe("user service", () => {
       status: USER_STATUS.ACTIVE,
       passwordHash: expect.any(String),
     });
+  });
+
+  it("coalesces concurrent activation of one blocked passwordless administrator", async () => {
+    let delayHash = false;
+    let releaseHash;
+    let markHashStarted;
+    const hashGate = new Promise((resolve) => {
+      releaseHash = resolve;
+    });
+    const hashStarted = new Promise((resolve) => {
+      markHashStarted = resolve;
+    });
+    const concurrentHarness = await createHarness({
+      beforeHash: async () => {
+        if (delayHash) {
+          markHashStarted();
+          await hashGate;
+        }
+      },
+    });
+    const { adminSession, repository, superadminSession, users } = concurrentHarness;
+    const originalDelivery = await users.createPrivilegedUser(
+      superadminSession.id,
+      privilegedProfile({ email: "concurrent-admin@example.cz" }),
+    );
+    await users.setUserStatus(superadminSession.id, originalDelivery.userId, USER_STATUS.BLOCKED);
+    delayHash = true;
+
+    const firstActivation = users.setUserStatus(
+      superadminSession.id,
+      originalDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+    const secondActivation = users.setUserStatus(
+      superadminSession.id,
+      originalDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+    await hashStarted;
+    await expect(
+      users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED),
+    ).resolves.toMatchObject({ status: USER_STATUS.BLOCKED });
+    releaseHash();
+    const deliveries = await Promise.all([firstActivation, secondActivation]);
+
+    expect(deliveries[0]).toMatchObject({
+      kind: "set_password",
+      userId: originalDelivery.userId,
+    });
+    expect(deliveries[1]).toEqual(deliveries[0]);
+    const state = repository.read();
+    expect(state.users.find((user) => user.id === originalDelivery.userId)).toMatchObject({
+      status: USER_STATUS.INVITED,
+    });
+    expect(state.users.find((user) => user.id === originalDelivery.userId)).not.toHaveProperty(
+      "passwordHash",
+    );
+    expect(
+      state.challenges.filter(
+        (challenge) =>
+          challenge.userId === originalDelivery.userId &&
+          challenge.type === "set_password" &&
+          challenge.revokedAt === null &&
+          challenge.usedAt === null,
+      ),
+    ).toHaveLength(1);
+    const statusTransitions = state.auditEvents
+      .filter(
+        (event) =>
+          event.targetId === originalDelivery.userId && event.action === "user.status_changed",
+      )
+      .map((event) => event.metadata);
+    expect(statusTransitions).toEqual([
+      { oldStatus: USER_STATUS.INVITED, newStatus: USER_STATUS.BLOCKED },
+      { oldStatus: USER_STATUS.BLOCKED, newStatus: USER_STATUS.INVITED },
+    ]);
+  });
+
+  it("preserves the order of conflicting status requests for one user", async () => {
+    const { adminSession, repository, superadminSession, users } = harness;
+
+    await Promise.all([
+      users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED),
+      users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.ACTIVE),
+      users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED),
+    ]);
+
+    expect(repository.read().users.find((user) => user.id === adminSession.userId).status).toBe(
+      USER_STATUS.BLOCKED,
+    );
+    expect(
+      repository.read().auditEvents
+        .filter(
+          (event) => event.targetId === adminSession.userId && event.action === "user.status_changed",
+        )
+        .map((event) => event.metadata),
+    ).toEqual([
+      { oldStatus: USER_STATUS.ACTIVE, newStatus: USER_STATUS.BLOCKED },
+      { oldStatus: USER_STATUS.BLOCKED, newStatus: USER_STATUS.ACTIVE },
+      { oldStatus: USER_STATUS.ACTIVE, newStatus: USER_STATUS.BLOCKED },
+    ]);
   });
 
   it("restores blocked members according to their e-mail verification state", async () => {

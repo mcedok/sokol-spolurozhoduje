@@ -276,6 +276,37 @@ describe("administrace uživatelů", () => {
     confirm.mockRestore();
   });
 
+  it("během změny stavu zakáže tlačítko a ignoruje druhé kliknutí", async () => {
+    const user = userEvent.setup();
+    let finishStatusChange;
+    const pendingStatusChange = new Promise((resolve) => {
+      finishStatusChange = resolve;
+    });
+    const setUserStatus = vi.fn(() => pendingStatusChange);
+    renderAdministration({
+      users: [managedUsers[2]],
+      selectedUser: managedUsers[2],
+      actions: {
+        setFilters: vi.fn(),
+        selectUser: vi.fn(),
+        createUser: vi.fn(),
+        setUserStatus,
+        changeUserRole: vi.fn(),
+        openSetupDelivery: vi.fn(),
+        transferCandidates: [superadmin],
+      },
+    });
+
+    const statusButton = screen.getByRole("button", { name: "Aktivovat účet" });
+    await user.click(statusButton);
+    expect(screen.getByRole("button", { name: "Aktivace probíhá…" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Aktivace probíhá…" }));
+    expect(setUserStatus).toHaveBeenCalledTimes(1);
+
+    await act(async () => finishStatusChange({ status: "invited" }));
+    expect(screen.getByRole("button", { name: "Aktivovat účet" })).toBeEnabled();
+  });
+
   it("řadič načítá filtrovaná data přes služby a drží setup delivery pouze dočasně", async () => {
     const { result } = renderHook(() => useAppController());
     await waitFor(() => expect(result.current.actions.ready).toBe(true), { timeout: 5000 });

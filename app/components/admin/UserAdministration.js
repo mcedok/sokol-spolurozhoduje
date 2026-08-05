@@ -146,18 +146,25 @@ function UserManagementActions({ user, actions }) {
   const [role, setRole] = useState(user.role);
   const [transferUserId, setTransferUserId] = useState("");
   const [error, setError] = useState("");
+  const [statusPending, setStatusPending] = useState(false);
   const demotingOwner =
     role === ROLE.MEMBER &&
     [ROLE.ADMIN, ROLE.SUPERADMIN].includes(user.role) &&
     user.ownedNormCount > 0;
 
   async function changeStatus() {
+    if (statusPending) return;
     const nextStatus = user.status === USER_STATUS.BLOCKED ? USER_STATUS.ACTIVE : USER_STATUS.BLOCKED;
     if (
       nextStatus === USER_STATUS.BLOCKED &&
       !window.confirm("Blokace účtu zruší všechny aktivní relace. Chcete pokračovat?")
     ) return;
-    await actions.setUserStatus?.(user.id, nextStatus);
+    setStatusPending(true);
+    try {
+      await actions.setUserStatus?.(user.id, nextStatus);
+    } finally {
+      setStatusPending(false);
+    }
   }
 
   async function submitRole(event) {
@@ -184,9 +191,17 @@ function UserManagementActions({ user, actions }) {
       {
         type: "button",
         className: user.status === USER_STATUS.BLOCKED ? "primaryButton small" : "dangerButton",
+        disabled: statusPending,
+        "aria-busy": statusPending,
         onClick: changeStatus,
       },
-      user.status === USER_STATUS.BLOCKED ? "Aktivovat účet" : "Blokovat účet",
+      statusPending
+        ? user.status === USER_STATUS.BLOCKED
+          ? "Aktivace probíhá…"
+          : "Blokace probíhá…"
+        : user.status === USER_STATUS.BLOCKED
+          ? "Aktivovat účet"
+          : "Blokovat účet",
     ),
     h(
       "form",

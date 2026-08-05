@@ -47,6 +47,8 @@ function publicUser(user) {
 }
 
 export function createUserService({ repository, auth, audit, now }) {
+  const statusQueues = new Map();
+
   function getManagingActor(sessionId) {
     const session = auth.getSession(sessionId);
     assertAuthorized(canManageUsers(session.user), "manage_users");
@@ -177,9 +179,7 @@ export function createUserService({ repository, auth, audit, now }) {
     return asSetPasswordDelivery(delivery);
   }
 
-  async function setUserStatus(sessionId, userId, status) {
-    const actor = getManagingActor(sessionId);
-    if (!MANAGED_STATUSES.has(status)) throw new UserServiceError("INVALID_STATUS");
+  async function performSetUserStatus(actor, sessionId, userId, status) {
     const state = repository.read();
     const user = findUser(userId, state);
     const requiresPasswordSetup =
@@ -214,6 +214,31 @@ export function createUserService({ repository, auth, audit, now }) {
     recordUserChange(actor.id, "user.status_changed", userId, { oldStatus, newStatus: nextStatus });
     if (requiresPasswordSetup) return asSetPasswordDelivery(delivery);
     return publicUser(findUser(userId));
+  }
+
+  async function setUserStatus(sessionId, userId, status) {
+    const actor = getManagingActor(sessionId);
+    if (!MANAGED_STATUSES.has(status)) throw new UserServiceError("INVALID_STATUS");
+
+    let queue = statusQueues.get(userId);
+    if (!queue) {
+      queue = { tail: Promise.resolve(), lastStatus: null, lastOperation: null };
+      statusQueues.set(userId, queue);
+    }
+    if (queue.lastStatus === status && queue.lastOperation) return queue.lastOperation;
+
+    const operation = queue.tail.then(() =>
+      performSetUserStatus(actor, sessionId, userId, status),
+    );
+    queue.lastStatus = status;
+    queue.lastOperation = operation;
+    queue.tail = operation.catch(() => undefined);
+    void operation.finally(() => {
+      if (queue.lastOperation === operation && statusQueues.get(userId) === queue) {
+        statusQueues.delete(userId);
+      }
+    }).catch(() => undefined);
+    return operation;
   }
 
   async function changeUserRole(sessionId, userId, role, transferNormsToUserId) {
