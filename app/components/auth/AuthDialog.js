@@ -26,13 +26,14 @@ function Field({ label, inputRef, ...props }) {
   return h("label", null, label, h("input", { ref: inputRef, ...props }));
 }
 
-export function AuthDialog({ authMode, onClose, onAuthenticated, authService }) {
-  const [step, setStep] = useState(INITIAL_STEP[authMode] || "identify");
+export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated, authService }) {
+  const [step, setStep] = useState(initialDelivery ? "set-password" : INITIAL_STEP[authMode] || "identify");
   const [email, setEmail] = useState("");
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
-  const [token, setToken] = useState("");
-  const [deliveries, setDeliveries] = useState([]);
+  const [token, setToken] = useState(initialDelivery?.demoToken || "");
+  const [activeDelivery, setActiveDelivery] = useState(initialDelivery || null);
+  const [deliveries, setDeliveries] = useState(initialDelivery ? [initialDelivery] : []);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const firstFieldRef = useRef(null);
@@ -155,9 +156,12 @@ export function AuthDialog({ authMode, onClose, onAuthenticated, authService }) 
     setError("");
     const data = new FormData(event.currentTarget);
     try {
-      await authService.completePasswordReset({ token, password: data.get("newPassword") });
+      const operation = activeDelivery?.kind === "set_password"
+        ? authService.completePasswordSetup
+        : authService.completePasswordReset;
+      await operation({ token, password: data.get("newPassword") });
       setNotice("Nové heslo je nastavené. Nyní se můžete přihlásit.");
-      setStep("password");
+      setStep(activeDelivery?.kind === "set_password" ? "identify" : "password");
     } catch (errorValue) {
       report(errorValue);
     }
@@ -171,6 +175,7 @@ export function AuthDialog({ authMode, onClose, onAuthenticated, authService }) 
 
   function openLink(delivery) {
     setToken(delivery.demoToken);
+    setActiveDelivery(delivery);
     transition("set-password");
   }
 
@@ -178,6 +183,7 @@ export function AuthDialog({ authMode, onClose, onAuthenticated, authService }) 
   if (step === "identify") {
     form = h("form", { onSubmit: identify },
       h("p", null, "Zadejte e-mail. Podle typu účtu nabídneme bezpečný způsob přihlášení."),
+      notice && h("p", { className: "authNotice", role: "status" }, notice),
       h(Field, { key: "identify-email", label: "E-mail", name: "email", type: "email", required: true, value: email, onChange: (event) => setEmail(event.target.value), inputRef: firstFieldRef }),
       h("div", { className: "modalActions" }, h("button", { className: "primaryButton" }, "Pokračovat")),
     );

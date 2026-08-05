@@ -2,7 +2,7 @@ import { createElement as h } from "react";
 
 function deliveryLabel(delivery) {
   if (delivery.demoCode) return `Ověřovací kód ${delivery.demoCode}`;
-  if (delivery.kind === "password_setup") return "Odkaz pro nastavení hesla";
+  if (delivery.kind === "set_password") return "Odkaz pro první heslo";
   return "Odkaz pro obnovu hesla";
 }
 

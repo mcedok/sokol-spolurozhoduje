@@ -240,6 +240,57 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
 .demoCredentials { background: var(--canvas); }
 .demoWarning { display: inline-block; margin-bottom: 10px; color: var(--red-dark); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 .demoCredentials li { overflow-wrap: anywhere; font-family: "Sokol Fugner", monospace; font-size: 12px; }
+.userAdministration { max-width: 1440px; margin: 0 auto; padding: 34px clamp(18px, 4vw, 58px) 90px; }
+.userAdministration.unauthorized { max-width: 760px; margin-top: 50px; border-left: 4px solid var(--red); background: white; }
+.userAdministration.unauthorized h1 { margin: 0 0 10px; font-family: "Sokol Tyrs", Impact, sans-serif; font-size: clamp(34px, 4vw, 50px); font-weight: 400; text-transform: uppercase; }
+.userAdministration.unauthorized p { margin: 0; color: var(--muted); line-height: 1.55; }
+.userAdministrationHeading { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 24px; }
+.userAdministrationHeading h1 { margin: 0 0 7px; font-family: "Sokol Tyrs", Impact, sans-serif; font-size: clamp(48px, 5vw, 68px); font-weight: 400; line-height: .95; text-transform: uppercase; }
+.userAdministrationHeading > div > p:last-child { margin: 0; color: var(--muted); }
+.userSummary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.userSummaryCard { display: flex; justify-content: space-between; align-items: center; min-height: 76px; padding: 18px 20px; border: 1px solid var(--line); background: white; }
+.userSummaryCard span { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.userSummaryCard strong { font-family: "Sokol Fugner", monospace; font-size: 30px; font-weight: 400; }
+.userAdministration > .demoInbox { margin: 0 0 14px; background: white; }
+.userFilters { display: grid; grid-template-columns: minmax(260px, 1fr) 210px 210px; gap: 12px; padding: 16px; border: 1px solid var(--line); background: white; }
+.userAdministrationLayout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 390px); gap: 14px; align-items: start; margin-top: 14px; }
+.userTableWrap { min-width: 0; overflow-x: auto; border: 1px solid var(--line); background: white; }
+.userTable { width: 100%; border-collapse: collapse; }
+.userTable th, .userTable td { padding: 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.userTable thead th { color: var(--muted); background: #fafaf8; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.userTable tbody tr:last-child th, .userTable tbody tr:last-child td { border-bottom: 0; }
+.userTable tbody tr.selected { background: #fbf5f6; box-shadow: inset 4px 0 var(--red); }
+.userTable td > span:first-child, .userTable td > small { display: block; }
+.userTable td > small { margin-top: 4px; color: var(--muted); font-family: "Sokol Fugner", monospace; }
+.userRowButton { display: grid; gap: 4px; width: 100%; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer; }
+.userRowButton strong { font-size: 13px; }
+.userRowButton span { color: var(--muted); font-size: 11px; font-weight: 400; }
+.userRole, .userStatus { display: inline-flex !important; width: fit-content; padding: 5px 8px; border-radius: 20px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.userRole { background: #efefec; }
+.userRole.superadmin { color: var(--red-dark); background: #f9e6ea; }
+.userStatus.active { color: var(--green); background: #e7f1eb; }
+.userStatus.invited, .userStatus.pending_verification { color: #8b560e; background: #f7eddd; }
+.userStatus.blocked { color: #7e323d; background: #f4e5e7; }
+.userTableEmpty { padding: 36px !important; color: var(--muted); text-align: center !important; }
+.userDetailPanel { position: sticky; top: 88px; min-width: 0; padding: 22px; border: 1px solid var(--line); background: white; }
+.userDetailPanel.empty { min-height: 180px; display: grid; place-items: center; color: var(--muted); text-align: center; }
+.userDetailBack { display: none; border: 0; background: transparent; padding: 0; color: var(--red); font-size: 12px; font-weight: 800; cursor: pointer; }
+.userDetailPanel h2 { margin: 0 0 18px; font-family: "Sokol Tyrs", Impact, sans-serif; font-size: 34px; font-weight: 400; text-transform: uppercase; }
+.userFacts { display: grid; gap: 0; margin: 0; border-top: 1px solid var(--line); }
+.userFacts div { display: grid; grid-template-columns: 95px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.userFacts dt { color: var(--muted); font-size: 10px; }
+.userFacts dd { margin: 0; overflow-wrap: anywhere; font-size: 11px; font-weight: 700; }
+.userManagementActions { margin-top: 20px; padding-top: 18px; border-top: 2px solid var(--ink); }
+.userManagementActions h3, .userAudit h3 { margin: 0 0 12px; font-size: 16px; }
+.userManagementActions > button { width: 100%; border: 1px solid #d7aab2; background: #fbf0f2; padding: 9px 12px; border-radius: 4px; cursor: pointer; font-weight: 800; }
+.userManagementActions form { display: grid; gap: 10px; margin-top: 12px; }
+.userManagementActions form > button { border: 1px solid var(--line); background: white; padding: 9px 12px; border-radius: 4px; cursor: pointer; font-weight: 800; }
+.userActionError { margin: 0; padding: 9px 10px; border-left: 3px solid var(--red); background: #fae9ec; color: #7f1629; font-size: 11px; }
+.userAudit { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.userAudit ol { list-style: none; display: grid; gap: 9px; margin: 0; padding: 0; }
+.userAudit li { display: grid; gap: 3px; padding: 10px; background: var(--canvas); font-size: 11px; }
+.userAudit time { color: var(--muted); font-size: 10px; }
+.userAudit > p { color: var(--muted); font-size: 11px; }
 .emptyState { grid-column: 1 / -1; padding: 40px; border: 1px dashed #c6c5be; background: #fafaf8; color: var(--muted); text-align: center; }
 .toast { position: fixed; left: 50%; bottom: 25px; transform: translateX(-50%); z-index: 80; background: var(--ink); color: white; border-radius: 4px; padding: 11px 16px; box-shadow: 0 8px 30px #0004; font-size: 12px; }
 .toast.error { background: #7f1629; }
@@ -313,6 +364,28 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
   .passwordActions { align-items: stretch; flex-direction: column; }
   .passwordActions .primaryButton { width: 100%; }
   .demoInbox li { align-items: flex-start; flex-direction: column; }
+  .userAdministration { padding: 22px 12px 60px; }
+  .userAdministration.unauthorized { margin-top: 24px; padding: 24px 18px; }
+  .userAdministrationHeading { display: block; }
+  .userAdministrationHeading .primaryButton { width: 100%; margin-top: 18px; }
+  .userSummary { grid-template-columns: 1fr; gap: 8px; }
+  .userSummaryCard { min-height: 58px; padding: 12px 15px; }
+  .userFilters { grid-template-columns: 1fr; padding: 12px; }
+  .userAdministrationLayout { display: block; }
+  .userTableWrap { overflow: visible; border: 0; background: transparent; }
+  .userTable, .userTable tbody, .userTable tr, .userTable th, .userTable td { display: block; width: 100%; }
+  .userTable thead { display: none; }
+  .userTable tbody { display: grid; gap: 9px; }
+  .userTable tbody tr { padding: 14px; border: 1px solid var(--line); background: white; }
+  .userTable tbody tr.selected { box-shadow: inset 4px 0 var(--red); }
+  .userTable th, .userTable td { padding: 5px 0; border: 0; }
+  .userTable td:nth-child(2) { color: var(--muted); font-size: 11px; }
+  .userTable td:nth-child(3), .userTable td:nth-child(4) { display: inline-block; width: auto; margin: 6px 6px 0 0; }
+  .userRowButton { min-height: 44px; }
+  .userDetailPanel { position: static; display: none; margin-top: 12px; padding: 18px; }
+  .userAdministrationLayout.hasDetail .userTableWrap { display: none; }
+  .userAdministrationLayout.hasDetail .userDetailPanel { display: block; min-height: calc(100vh - 150px); }
+  .userDetailBack { display: inline-flex; margin-bottom: 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

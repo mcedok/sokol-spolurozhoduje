@@ -3,6 +3,10 @@
 import { useMemo, useState } from "react";
 import { AuthDialog } from "./components/auth/AuthDialog.js";
 import { UserMenu } from "./components/auth/UserMenu.js";
+import {
+  canAccessUserAdministration,
+  UserAdministration,
+} from "./components/admin/UserAdministration.js";
 import { Feedback } from "./components/shared/Feedback.js";
 import * as fileRepository from "./data/file-repository.js";
 import { createInitialState } from "./domain/demo-data.js";
@@ -49,7 +53,18 @@ function EmptyState({ children }) {
 
 export default function Home() {
   const controller = useAppController();
-  const { state, session, currentUser, view, actions, feedback, authMode, services } = controller;
+  const {
+    state,
+    session,
+    currentUser,
+    view,
+    actions,
+    feedback,
+    authMode,
+    authDelivery,
+    services,
+    userAdministration,
+  } = controller;
   const norms = state.norms;
   const sessionId = session?.id || null;
   const setView = actions.setView;
@@ -267,6 +282,9 @@ export default function Home() {
           <button className={view === "landing" ? "active" : ""} onClick={() => setView("landing")}>Normy</button>
           <button className={view === "detail" ? "active" : ""} onClick={() => openNorm(selectedNorm?.id)}>Připomínkování</button>
           <button className={view === "admin" ? "active" : ""} onClick={() => openAdmin()}>Administrace</button>
+          {canAccessUserAdministration(currentUser) && (
+            <button className={view === "users" ? "active" : ""} onClick={() => setView("users")}>Uživatelé</button>
+          )}
         </nav>
         <UserMenu
           currentUser={currentUser}
@@ -477,6 +495,19 @@ export default function Home() {
         </section>
       )}
 
+      {view === "users" && (
+        <UserAdministration
+          currentUser={currentUser}
+          users={userAdministration.users}
+          selectedUser={userAdministration.selectedUser}
+          auditEvents={userAdministration.auditEvents}
+          summary={userAdministration.summary}
+          filters={userAdministration.filters}
+          setupDeliveries={userAdministration.setupDeliveries}
+          actions={userAdministration.actions}
+        />
+      )}
+
       {submissionMode && selectedNorm && (
         <div className="modalBackdrop" onMouseDown={() => setSubmissionMode(null)}>
           <form className="modal" onSubmit={submitContribution} onMouseDown={(event) => event.stopPropagation()}>
@@ -515,6 +546,7 @@ export default function Home() {
       {authMode && services?.auth && (
         <AuthDialog
           authMode={authMode}
+          initialDelivery={authDelivery}
           authService={services.auth}
           onAuthenticated={actions.authenticated}
           onClose={actions.closeLogin}

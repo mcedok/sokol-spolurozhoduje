@@ -111,6 +111,23 @@ describe("user service", () => {
     });
   });
 
+  it("rejects a duplicate e-mail after normalizing whitespace and letter case", async () => {
+    const { repository, superadminSession, users } = harness;
+    const before = repository.read();
+
+    await expect(
+      users.createPrivilegedUser(
+        superadminSession.id,
+        privilegedProfile({ email: "  SUPERADMIN@SOKOL.DEMO  " }),
+      ),
+    ).rejects.toMatchObject({ code: "EMAIL_EXISTS" });
+
+    const after = repository.read();
+    expect(after.users).toEqual(before.users);
+    expect(after.challenges).toEqual(before.challenges);
+    expect(after.auditEvents).toEqual(before.auditEvents);
+  });
+
   it("rolls back a newly created administrator when password setup delivery fails", async () => {
     const { audit, auth, clock, repository, superadminSession } = harness;
     const users = createUserService({
