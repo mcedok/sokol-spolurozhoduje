@@ -33,6 +33,7 @@ const ERROR_MESSAGES = {
   INVALID_FILE: "Vyberte platný soubor.",
   INVALID_NORM: "Vyplňte název normy.",
   INVALID_RESOLUTION: "Vyplňte platný výsledek vypořádání.",
+  RESOLUTION_REASON_REQUIRED: "Vyplňte odůvodnění vypořádání.",
   INVALID_VOTE: "Hlas nemá platnou hodnotu.",
   NORM_NOT_FOUND: "Norma nebyla nalezena.",
   SUBMISSION_NOT_FOUND: "Podnět nebyl nalezen.",
@@ -414,10 +415,12 @@ export function createNormService({ repository, auth, audit, fileRepository, now
     if (!RESOLUTION_STATUSES.has(resolutionStatus)) {
       throw new NormServiceError("INVALID_RESOLUTION");
     }
+    const resolutionReason = normalizeText(resolution?.resolution);
+    if (!resolutionReason) throw new NormServiceError("RESOLUTION_REASON_REQUIRED");
     const state = repository.update((draft) => {
       Object.assign(findSubmission(findNorm(draft, normId), submissionId), {
         resolutionStatus,
-        resolution: normalizeText(resolution?.resolution),
+        resolution: resolutionReason,
         adminComment: normalizeText(resolution?.adminComment),
       });
     });

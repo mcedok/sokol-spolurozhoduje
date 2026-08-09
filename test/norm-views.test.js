@@ -232,12 +232,19 @@ describe("role-aware správa norem", () => {
   it("ukládá editaci normy jednou až po explicitním potvrzení a vyžádá důvod uzavření", async () => {
     const user = userEvent.setup();
     const updateNorm = vi.fn().mockResolvedValue({ norm: { ...norm } });
+    const resolveSubmission = vi.fn();
     render(createElement(NormAdministration, {
       norms: [norm],
       selectedNorm: norm,
       currentUser: administrator,
-      actions: { updateNorm },
+      actions: { updateNorm, resolveSubmission },
     }));
+
+    const resolutionReason = screen.getByRole("textbox", { name: "Odůvodnění rozhodnutí" });
+    expect(resolutionReason).toBeRequired();
+    await user.clear(resolutionReason);
+    await user.click(screen.getByRole("button", { name: "Uložit vypořádání" }));
+    expect(resolveSubmission).not.toHaveBeenCalled();
 
     await user.clear(screen.getByRole("textbox", { name: "Předkladatel" }));
     await user.type(screen.getByRole("textbox", { name: "Předkladatel" }), "Výbor ČOS");

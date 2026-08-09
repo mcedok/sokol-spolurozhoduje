@@ -217,9 +217,11 @@ describe("administrace uživatelů", () => {
     const janaRow = screen.getByRole("button", {
       name: /Otevřít detail Jana Nováková.*jana@example\.cz.*TJ Sokol Brno I.*MEMBER-BRNO-42.*Člen.*Aktivní/i,
     });
+    expect(janaRow).toHaveAttribute("aria-pressed", "false");
     janaRow.focus();
     await user.keyboard("{Enter}");
 
+    expect(janaRow).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { name: "Jana Nováková" })).toBeInTheDocument();
     expect(screen.getByText("MEMBER-BRNO-42", { selector: ".userDetailPanel *" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Auditní historie" })).toBeInTheDocument();

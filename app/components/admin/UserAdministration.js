@@ -130,6 +130,7 @@ function UserTable({ users, selectedUser, onSelect }) {
                   {
                     type: "button",
                     className: "userRowButton",
+                    "aria-pressed": selectedUser?.id === user.id,
                     onClick: () => onSelect?.(user.id),
                   },
                   h(

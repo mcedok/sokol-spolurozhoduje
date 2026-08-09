@@ -668,6 +668,34 @@ async function runBrowserWorkflows() {
   assert(!(await evaluate(`document.querySelector('.adminPage')?.textContent.includes(${JSON.stringify(foreignNormTitle)})`)), "seed administrator workspace excludes the superadministrator-owned norm");
   await logout();
 
+  const resetPassword = "AdminReset!2026";
+  await openLogin();
+  await setValue('[data-auth-step="identify"] input[name="email"]', "administrator@sokol.demo");
+  await clickText(COPY.continue, "[data-auth-step]");
+  await waitFor("document.querySelector('[data-auth-step]')?.dataset.authStep === 'password'", "password-reset account identification");
+  await clickText("Zapomenuté heslo", "[data-auth-step]");
+  await waitFor("document.querySelector('[data-auth-step]')?.dataset.authStep === 'forgot-password'", "password-reset request form");
+  await evaluate("window.__accessSmoke.click('[data-auth-step=\"forgot-password\"] form button.primaryButton')");
+  await waitFor("Boolean(document.querySelector('[data-auth-step=\"forgot-password\"] .demoInbox button'))", "password-reset demo delivery");
+  await evaluate("window.__accessSmoke.click('[data-auth-step=\"forgot-password\"] .demoInbox button')");
+  await waitFor("document.querySelector('[data-auth-step]')?.dataset.authStep === 'set-password'", "password-reset link opening");
+  await setValue('[data-auth-step="set-password"] input[name="newPassword"]', resetPassword);
+  await evaluate("window.__accessSmoke.click('[data-auth-step=\"set-password\"] form button.primaryButton')");
+  await waitFor("document.querySelector('[data-auth-step]')?.dataset.authStep === 'password'", "password-reset completion");
+  await setValue('[data-auth-step="password"] input[name="password"]', "AdminSokol!2026");
+  await evaluate("window.__accessSmoke.click('[data-auth-step=\"password\"] form button.primaryButton')");
+  await waitFor("Boolean(document.querySelector('[data-auth-step=\"password\"] .authError'))", "old password rejection after reset");
+  const oldPasswordMetrics = await evaluate(`({
+    signedIn: Boolean(document.querySelector('.userMenu.signedIn')),
+    error: document.querySelector('[data-auth-step="password"] .authError')?.textContent.trim(),
+  })`);
+  assert(!oldPasswordMetrics.signedIn && Boolean(oldPasswordMetrics.error), "old administrator password is rejected after UI reset", oldPasswordMetrics);
+  await setValue('[data-auth-step="password"] input[name="password"]', resetPassword);
+  await evaluate("window.__accessSmoke.click('[data-auth-step=\"password\"] form button.primaryButton')");
+  await waitFor("Boolean(document.querySelector('.userMenu.signedIn')) && !document.querySelector('[data-auth-step]')", "new password login after reset");
+  assert(await evaluate("document.querySelector('.userMenu.signedIn .userIdentity small')?.textContent.trim() === 'Administrátor'"), "administrator signs in with the new password after UI reset");
+  await logout();
+
   assert(browserErrors.length === 0, "real-browser workflows emit no runtime exceptions or console errors", browserErrors);
   assert(resourceErrors.length === 0, "real-browser workflows load all requested resources without HTTP errors", resourceErrors);
   return {

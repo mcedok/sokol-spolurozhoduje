@@ -305,6 +305,27 @@ describe("norm service", () => {
     expect(repository.read().norms).toEqual(before.norms);
   });
 
+  it("rejects an empty resolution reason without changing the contribution", async () => {
+    const { adminSession, norms, repository } = harness;
+    const before = structuredClone(repository.read().norms[0].submissions[0]);
+
+    await expect(
+      norms.resolveSubmission(adminSession.id, "norm-001", "sub-1", {
+        resolutionStatus: "Zapracováno",
+        resolution: "   ",
+        adminComment: "Doplňující komentář nesmí nahrazovat odůvodnění.",
+      }),
+    ).rejects.toMatchObject({
+      code: "RESOLUTION_REASON_REQUIRED",
+      message: "Vyplňte odůvodnění vypořádání.",
+    });
+
+    expect(repository.read().norms[0].submissions[0]).toEqual(before);
+    expect(repository.read().auditEvents).not.toContainEqual(
+      expect.objectContaining({ action: "norm.submission_resolved", targetId: "norm-001" }),
+    );
+  });
+
   it.each(["Schváleno", "Neschváleno", "Archivováno"])(
     "normalizes commentsOpen to false when the owner updates status to %s",
     async (status) => {

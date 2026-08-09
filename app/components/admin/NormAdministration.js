@@ -245,7 +245,7 @@ export function NormAdministration({ norms = [], selectedNorm, currentUser, acti
                       ),
                     ),
                     h("label", null, "Odůvodnění rozhodnutí",
-                      h("textarea", { name: "resolution", defaultValue: item.resolution, placeholder: "Popište, jak a proč byl podnět vypořádán." }),
+                      h("textarea", { name: "resolution", defaultValue: item.resolution, placeholder: "Popište, jak a proč byl podnět vypořádán.", required: true }),
                     ),
                     h("label", null, "Komentář předkladatele",
                       h("input", { name: "adminComment", defaultValue: item.adminComment, placeholder: "Volitelná doplňující odpověď" }),
