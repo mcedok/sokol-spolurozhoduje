@@ -41,8 +41,11 @@ Automatické testy a produkční Sites sestavení:
 
 ```bash
 pnpm test
+pnpm smoke:access
 pnpm build
 ```
+
+`pnpm smoke:access` vyžaduje lokální Google Chrome. V časově omezeném testu samo spustí a ukončí vývojový server i izolovaný headless Chrome a ověří skutečné desktopové a mobilní přístupové workflow.
 
 Vývojový server vypíše lokální adresu. Data zůstávají v profilu konkrétního prohlížeče; pro čistý začátek je nutné odstranit lokální data webu nebo v aplikaci potvrdit reset ukázkových dat.
 

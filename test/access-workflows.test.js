@@ -268,9 +268,7 @@ describe("access administration acceptance workflows", () => {
     );
   });
 
-  it("10. keeps mobile authentication and user administration operable with accessible dialogs", async () => {
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
-    window.dispatchEvent(new Event("resize"));
+  it("10. exposes structurally accessible authentication and user-administration dialogs", async () => {
     const user = userEvent.setup();
     const { auth, repository } = await createHarness();
     render(h(AuthDialogLauncher, { authService: auth }));
