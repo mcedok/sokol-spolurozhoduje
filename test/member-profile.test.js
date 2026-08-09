@@ -1,0 +1,194 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { createElement } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { MemberProfile } from "../app/components/member/MemberProfile.js";
+
+const controller = vi.hoisted(() => ({ current: null }));
+vi.mock("../app/hooks/use-app-controller.js", () => ({
+  useAppController: () => controller.current,
+}));
+
+import Home from "../app/page.js";
+
+const user = {
+  id: "member-1",
+  firstName: "Jana",
+  lastName: "Nováková",
+  email: "jana@example.cz",
+  sokolUnit: "TJ Sokol Brno I",
+  membershipId: "MEMBER-1",
+  role: "member",
+  status: "active",
+  emailVerifiedAt: "2026-08-01T10:00:00.000Z",
+};
+
+describe("členský profil", () => {
+  it("ukáže identitu a pouze příspěvky a hlasy aktuálního uživatele", () => {
+    render(createElement(MemberProfile, {
+      user,
+      contributions: [
+        {
+          id: "own-contribution",
+          authorUserId: user.id,
+          title: "Můj návrh",
+          normTitle: "Členský řád",
+          kind: "Návrh úpravy",
+        },
+        {
+          id: "foreign-contribution",
+          authorUserId: "member-2",
+          title: "Cizí návrh",
+          normTitle: "Členský řád",
+          kind: "Komentář",
+        },
+      ],
+      votes: [
+        {
+          id: "own-vote",
+          userId: user.id,
+          normTitle: "Členský řád",
+          label: "Potřebnost normy: ano",
+        },
+        {
+          id: "foreign-vote",
+          userId: "member-2",
+          normTitle: "Jiný řád",
+          label: "Podpora podnětu: ne",
+        },
+      ],
+    }));
+
+    expect(screen.getByRole("heading", { name: "Jana Nováková" })).toBeInTheDocument();
+    const facts = screen.getByRole("region", { name: "Členské údaje" });
+    expect(within(facts).getByText("jana@example.cz")).toBeInTheDocument();
+    expect(within(facts).getByText("TJ Sokol Brno I")).toBeInTheDocument();
+    expect(within(facts).getByText("MEMBER-1")).toBeInTheDocument();
+    expect(within(facts).getByText("Ověřený e-mail")).toBeInTheDocument();
+
+    expect(screen.getByRole("heading", { name: "Moje příspěvky" })).toBeInTheDocument();
+    expect(screen.getByText("Můj návrh")).toBeInTheDocument();
+    expect(screen.queryByText("Cizí návrh")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Moje hlasy" })).toBeInTheDocument();
+    expect(screen.getByText("Potřebnost normy: ano")).toBeInTheDocument();
+    expect(screen.queryByText("Podpora podnětu: ne")).not.toBeInTheDocument();
+  });
+});
+
+const pageNorm = {
+  id: "norm-page",
+  number: "SOKOL-2026-201",
+  title: "Norma pro stránkový test",
+  category: "Směrnice",
+  version: "1.0",
+  status: "K připomínkování",
+  commentsOpen: true,
+  publishedAt: "2026-08-01",
+  deadline: "2026-08-31",
+  submittedBy: "Předsednictvo ČOS",
+  responsible: "Odbor organizace ČOS",
+  summary: "Shrnutí.",
+  reason: "Důvodová zpráva.",
+  file: null,
+  needVotes: { yes: 0, no: 0 },
+  sections: [],
+  submissions: [],
+  ownerAdminId: "admin-1",
+  visibilityMode: "public-detail",
+};
+
+function pageController(currentUser, view = "landing") {
+  return {
+    session: currentUser ? { id: `session-${currentUser.id}`, user: currentUser } : null,
+    currentUser,
+    view,
+    actions: {
+      ready: true,
+      setView: vi.fn(),
+      openLogin: vi.fn(),
+      closeLogin: vi.fn(),
+      authenticated: vi.fn(),
+      logout: vi.fn(),
+    },
+    feedback: null,
+    authMode: null,
+    authDelivery: null,
+    services: null,
+    normCatalog: {
+      filter: "Aktivní",
+      norms: [pageNorm],
+      allNorms: [pageNorm],
+      permissions: {
+        canParticipate: true,
+        canManageNorm: () => false,
+      },
+      actions: {
+        setFilter: vi.fn(),
+        requireLogin: vi.fn(),
+        showParticipationUnavailable: vi.fn(),
+        downloadDocument: vi.fn(),
+        addContribution: vi.fn(),
+        addReply: vi.fn(),
+        voteSubmission: vi.fn(),
+        voteNeed: vi.fn(),
+        createNorm: vi.fn(),
+        deleteNorm: vi.fn(),
+        updateNorm: vi.fn(),
+        replaceDocument: vi.fn(),
+        resolveSubmission: vi.fn(),
+      },
+    },
+    normAdministration: { norms: [] },
+    memberProfile: { contributions: [], votes: [] },
+    userAdministration: {
+      users: [],
+      selectedUser: null,
+      auditEvents: [],
+      summary: {},
+      filters: {},
+      setupDeliveries: [],
+      actions: {},
+    },
+  };
+}
+
+describe("page-level role navigation", () => {
+  it("renderuje skutečnou navigaci Uživatelé jen superadministrátorovi", async () => {
+    const user = userEvent.setup();
+    controller.current = pageController({
+      id: "superadmin-1",
+      firstName: "Petra",
+      lastName: "Sokolová",
+      role: "superadmin",
+      status: "active",
+    });
+    const { unmount } = render(createElement(Home));
+
+    await user.click(screen.getByRole("button", { name: "Uživatelé" }));
+    expect(controller.current.actions.setView).toHaveBeenCalledWith("users");
+
+    unmount();
+    controller.current = pageController({
+      id: "admin-1",
+      firstName: "Martin",
+      lastName: "Kovář",
+      role: "admin",
+      status: "active",
+    });
+    render(createElement(Home));
+    expect(screen.queryByRole("button", { name: "Uživatelé" })).not.toBeInTheDocument();
+  });
+
+  it("otevře ověřenému členovi formulář bez editovatelných polí autora a jednoty", async () => {
+    const browserUser = userEvent.setup();
+    controller.current = pageController(user, "detail");
+    render(createElement(Home));
+
+    await browserUser.click(screen.getByRole("button", { name: "Návrh změny" }));
+
+    expect(screen.getByRole("heading", { name: "Nový návrh změny" })).toBeInTheDocument();
+    expect(screen.getByText("Jméno a jednota se bezpečně převezmou z přihlášeného účtu.")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Autor" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Jednota" })).not.toBeInTheDocument();
+  });
+});
