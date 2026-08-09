@@ -49,9 +49,29 @@ function publicUser(user) {
 export function createUserService({ repository, auth, audit, now }) {
   const statusQueues = new Map();
 
-  function getManagingActor(sessionId) {
-    const session = auth.getSession(sessionId);
-    assertAuthorized(canManageUsers(session.user), "manage_users");
+  function actorIdForSession(sessionId) {
+    return repository.read().sessions.find((candidate) => candidate.id === sessionId)?.userId || null;
+  }
+
+  function deny(sessionId, requestedAction, targetId = null) {
+    audit.record({
+      actorUserId: actorIdForSession(sessionId),
+      action: "authorization.denied",
+      targetType: "user",
+      targetId,
+      metadata: { requestedAction, permission: "manage_users" },
+    });
+    assertAuthorized(false, "manage_users");
+  }
+
+  function getManagingActor(sessionId, requestedAction, targetId = null) {
+    let session;
+    try {
+      session = auth.getSession(sessionId);
+    } catch {
+      return deny(sessionId, requestedAction, targetId);
+    }
+    if (!canManageUsers(session.user)) return deny(sessionId, requestedAction, targetId);
     return session.user;
   }
 
@@ -126,7 +146,7 @@ export function createUserService({ repository, auth, audit, now }) {
   }
 
   function listUsers(sessionId, filters = {}) {
-    getManagingActor(sessionId);
+    getManagingActor(sessionId, "user.list");
     const query = String(filters.query || "").trim().toLowerCase();
     return repository
       .read()
@@ -140,12 +160,12 @@ export function createUserService({ repository, auth, audit, now }) {
   }
 
   function getUser(sessionId, userId) {
-    getManagingActor(sessionId);
+    getManagingActor(sessionId, "user.read", userId);
     return publicUser(findUser(userId));
   }
 
   async function createPrivilegedUser(sessionId, input) {
-    const actor = getManagingActor(sessionId);
+    const actor = getManagingActor(sessionId, "user.create");
     if (!PRIVILEGED_ROLES.has(input?.role)) throw new UserServiceError("INVALID_ROLE");
     const profile = normalizeProfile(input);
     const state = repository.read();
@@ -217,7 +237,7 @@ export function createUserService({ repository, auth, audit, now }) {
   }
 
   async function setUserStatus(sessionId, userId, status) {
-    const actor = getManagingActor(sessionId);
+    const actor = getManagingActor(sessionId, "user.status_change", userId);
     if (!MANAGED_STATUSES.has(status)) throw new UserServiceError("INVALID_STATUS");
 
     let queue = statusQueues.get(userId);
@@ -242,7 +262,7 @@ export function createUserService({ repository, auth, audit, now }) {
   }
 
   async function changeUserRole(sessionId, userId, role, transferNormsToUserId) {
-    const actor = getManagingActor(sessionId);
+    const actor = getManagingActor(sessionId, "user.role_change", userId);
     if (!USER_ROLES.has(role)) throw new UserServiceError("INVALID_ROLE");
     const state = repository.read();
     const user = findUser(userId, state);

@@ -1,4 +1,16 @@
-const SENSITIVE_METADATA_KEYS = new Set(["password", "code", "token", "passwordHash", "passwordSalt"]);
+const SENSITIVE_METADATA_KEYS = new Set([
+  "password",
+  "code",
+  "token",
+  "passwordhash",
+  "passwordsalt",
+  "sessionid",
+]);
+
+function isSensitiveKey(key) {
+  const normalized = String(key).toLowerCase();
+  return SENSITIVE_METADATA_KEYS.has(normalized) || normalized.endsWith("token");
+}
 
 function sanitizeMetadata(value) {
   if (Array.isArray(value)) return value.map(sanitizeMetadata);
@@ -6,7 +18,7 @@ function sanitizeMetadata(value) {
 
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => !SENSITIVE_METADATA_KEYS.has(key))
+      .filter(([key]) => !isSensitiveKey(key))
       .map(([key, nestedValue]) => [key, sanitizeMetadata(nestedValue)]),
   );
 }

@@ -133,6 +133,59 @@ describe("veřejný a členský detail normy", () => {
     expect(actions.requireLogin).not.toHaveBeenCalled();
   });
 
+  it("u neaktivní nebo uzavřené normy nenabízí příspěvky ani hlasování", () => {
+    render(createElement(NormDetail, {
+      norm: { ...norm, status: "Archivováno", commentsOpen: true },
+      currentUser: activeMember,
+      permissions: { canParticipate: true, canManage: false },
+      actions: detailActions(),
+    }));
+
+    expect(screen.queryByRole("button", { name: "Návrh změny" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Ano 12$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "↑" })).not.toBeInTheDocument();
+    expect(screen.getByText(/aktivní připomínkování je uzavřeno/i)).toBeInTheDocument();
+  });
+
+  it("zobrazuje odpověď předkladatele jen vlastníkovi normy nebo superadministrátorovi", () => {
+    const actions = detailActions();
+    const { rerender } = render(createElement(NormDetail, {
+      norm,
+      currentUser: activeMember,
+      permissions: { canParticipate: true, canManage: false },
+      actions,
+    }));
+
+    expect(screen.queryByRole("textbox", { name: "Odpověď předkladatele" })).not.toBeInTheDocument();
+
+    rerender(createElement(NormDetail, {
+      norm,
+      currentUser: administrator,
+      permissions: { canParticipate: true, canManage: true },
+      actions,
+    }));
+    expect(screen.getByRole("textbox", { name: "Odpověď předkladatele" })).toBeInTheDocument();
+  });
+
+  it("zpřístupní aktuální hlas přes aria-pressed", () => {
+    render(createElement(NormDetail, {
+      norm,
+      currentUser: activeMember,
+      permissions: {
+        canParticipate: true,
+        canManage: false,
+        needVote: "yes",
+        submissionVote: () => 1,
+      },
+      actions: detailActions(),
+    }));
+
+    expect(screen.getByRole("button", { name: "Ano 12" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Ne 3" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "↑" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "↓" })).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("zobrazí Spravovat pouze při oprávnění ke konkrétní normě", () => {
     const { rerender } = render(createElement(NormDetail, {
       norm,
@@ -173,6 +226,37 @@ describe("role-aware správa norem", () => {
       currentUser: superadmin,
     }));
     expect(screen.getByRole("heading", { name: "Všechny normy" })).toBeInTheDocument();
+    expect(screen.getByText(/data zůstávají pouze v tomto profilu prohlížeče/i)).toBeInTheDocument();
+  });
+
+  it("ukládá editaci normy jednou až po explicitním potvrzení a vyžádá důvod uzavření", async () => {
+    const user = userEvent.setup();
+    const updateNorm = vi.fn().mockResolvedValue({ norm: { ...norm } });
+    render(createElement(NormAdministration, {
+      norms: [norm],
+      selectedNorm: norm,
+      currentUser: administrator,
+      actions: { updateNorm },
+    }));
+
+    await user.clear(screen.getByRole("textbox", { name: "Předkladatel" }));
+    await user.type(screen.getByRole("textbox", { name: "Předkladatel" }), "Výbor ČOS");
+    expect(updateNorm).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Uzavřít připomínky" }));
+    expect(screen.getByRole("textbox", { name: "Důvod uzavření připomínek" })).toBeRequired();
+    await user.type(
+      screen.getByRole("textbox", { name: "Důvod uzavření připomínek" }),
+      "Uplynula zveřejněná lhůta.",
+    );
+    await user.click(screen.getByRole("button", { name: "Uložit změny normy" }));
+
+    expect(updateNorm).toHaveBeenCalledTimes(1);
+    expect(updateNorm).toHaveBeenCalledWith(norm.id, expect.objectContaining({
+      submittedBy: "Výbor ČOS",
+      commentsOpen: false,
+      closureReason: "Uplynula zveřejněná lhůta.",
+    }));
   });
 
   it("řadič získá pro administrátora jen vlastní normy a pro superadministrátora všechny přes listManageable", async () => {

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -154,6 +154,37 @@ describe("AuthDialog", () => {
     ]) {
       expect(screen.getByText(credential)).toBeInTheDocument();
     }
+    expect(screen.getByText(/data jsou uložena pouze v tomto profilu prohlížeče/i))
+      .toBeInTheDocument();
+  });
+
+  it("udrží tabulátor uvnitř, zavře se Escape a po odmountování vrátí focus", async () => {
+    const user = userEvent.setup();
+    const launcher = document.createElement("button");
+    launcher.textContent = "Spustit přihlášení";
+    document.body.append(launcher);
+    launcher.focus();
+    const onClose = vi.fn();
+    const { unmount } = render(createElement(AuthDialog, {
+      authMode: "login",
+      authService: harness.authService,
+      onAuthenticated: vi.fn(),
+      onClose,
+    }));
+
+    const dialog = screen.getByRole("dialog", { name: "Přihlášení" });
+    const close = within(dialog).getByRole("button", { name: "Zavřít" });
+    const last = within(dialog).getByRole("button", { name: "Pokračovat" });
+    last.focus();
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(last).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
+
+    unmount();
+    expect(launcher).toHaveFocus();
   });
 
   it("keeps a blocked administrator on the password path and reports a neutral login error", async () => {

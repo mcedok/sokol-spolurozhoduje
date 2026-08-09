@@ -80,6 +80,19 @@ export function useAppController({ createServices = createDefaultServices } = {}
     setServices(null);
     setReady(false);
 
+    const initialSnapshot = bundle.repository.read?.();
+    if (initialSnapshot?.recoveryRequired) {
+      servicesRef.current = bundle;
+      setServices(bundle);
+      setState(initialSnapshot);
+      setSession(null);
+      setReady(true);
+      return () => {
+        active = false;
+        if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
+      };
+    }
+
     void bundle.auth.ensureDemoCredentials().then(() => {
       if (!active) return;
       servicesRef.current = bundle;
@@ -103,6 +116,23 @@ export function useAppController({ createServices = createDefaultServices } = {}
       if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
     };
   }, [createServices, flash, refresh]);
+
+  const resetDemoData = useCallback(async () => {
+    const bundle = servicesRef.current;
+    if (!bundle) return false;
+    if (!window.confirm("Obnovení nahradí všechna lokální demo data ukázkovým stavem. Chcete pokračovat?")) {
+      return false;
+    }
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    bundle.repository.reset();
+    await bundle.auth.ensureDemoCredentials();
+    setAuthMode(null);
+    setAuthDelivery(null);
+    setView("landing");
+    refresh(null);
+    flash("Ukázková data byla obnovena.");
+    return true;
+  }, [flash, refresh]);
 
   const openLogin = useCallback((mode = "login") => {
     if (!servicesRef.current) return false;
@@ -223,6 +253,21 @@ export function useAppController({ createServices = createDefaultServices } = {}
       normService.resolveSubmission(sessionId, normId, submissionId, resolution),
     ),
   [runNormMutation]);
+
+  const changePassword = useCallback(async ({ currentPassword, newPassword }) => {
+    if (!session?.id) return null;
+    const result = await mutate((bundle) => bundle.auth.changePassword({
+      sessionId: session.id,
+      currentPassword,
+      newPassword,
+    }));
+    if (!result) return null;
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    refresh(null);
+    setView("landing");
+    flash("Heslo bylo změněno. Přihlaste se znovu novým heslem.");
+    return result;
+  }, [flash, mutate, refresh, session?.id]);
 
   const downloadDocument = useCallback(async (norm) => {
     if (!norm.file?.id) {
@@ -425,7 +470,8 @@ export function useAppController({ createServices = createDefaultServices } = {}
     showParticipationUnavailable,
     flash,
     clearFeedback: () => setFeedback(null),
-  }), [authenticated, flash, logout, mutate, openLogin, ready, refresh, requireLogin, showParticipationUnavailable]);
+    resetDemoData,
+  }), [authenticated, flash, logout, mutate, openLogin, ready, refresh, requireLogin, resetDemoData, showParticipationUnavailable]);
 
   const normActions = useMemo(() => ({
     setFilter: setNormFilter,
@@ -472,10 +518,19 @@ export function useAppController({ createServices = createDefaultServices } = {}
       permissions: {
         canParticipate: canParticipate(currentUser),
         canManageNorm: (norm) => canManageNorm(currentUser, norm),
+        needVote: (norm) => currentUser
+          ? state.votes?.[`need:${currentUser.id}:${norm?.id}`] || null
+          : null,
+        submissionVote: (norm, submissionId) => currentUser
+          ? Number(state.votes?.[`submission:${currentUser.id}:${norm?.id}:${submissionId}`] || 0)
+          : 0,
       },
     },
     normAdministration,
-    memberProfile,
+    memberProfile: {
+      ...memberProfile,
+      actions: { changePassword },
+    },
     userAdministration: {
       ...userAdministration,
       filters: userFilters,

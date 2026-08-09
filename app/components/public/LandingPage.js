@@ -56,7 +56,7 @@ function LandingPage({ norms = [], filter = "Aktivn\xED", onFilter, onOpen }) {
           /* @__PURE__ */ jsx("p", { className: "kicker", children: "Evidence materi\xE1l\u016F" }),
           /* @__PURE__ */ jsx("h2", { children: "Normy k p\u0159ipom\xEDnkov\xE1n\xED" })
         ] }),
-        /* @__PURE__ */ jsx("div", { className: "filterTabs", children: ["Aktivn\xED", "Uzav\u0159en\xE9", "V\u0161echny"].map((item) => /* @__PURE__ */ jsx("button", { className: filter === item ? "active" : "", onClick: () => onFilter?.(item), children: item }, item)) })
+        /* @__PURE__ */ jsx("div", { className: "filterTabs", children: ["Aktivn\xED", "Uzav\u0159en\xE9", "V\u0161echny"].map((item) => /* @__PURE__ */ jsx("button", { className: filter === item ? "active" : "", "aria-pressed": filter === item, onClick: () => onFilter?.(item), children: item }, item)) })
       ] }),
       /* @__PURE__ */ jsx("div", { className: "normGrid", children: norms.length ? norms.map(
         (norm) => norm.visibilityMode === "title-only" ? /* @__PURE__ */ jsxs("article", { className: "normCard", children: [

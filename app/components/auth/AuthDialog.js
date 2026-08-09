@@ -1,4 +1,5 @@
 import { createElement as h, useEffect, useRef, useState } from "react";
+import { useDialogFocusTrap } from "../../hooks/use-dialog-focus-trap.js";
 import { DemoInbox } from "./DemoInbox.js";
 
 const INITIAL_STEP = {
@@ -37,24 +38,11 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const firstFieldRef = useRef(null);
-  const returnFocusRef = useRef(null);
-
-  useEffect(() => {
-    returnFocusRef.current = document.activeElement;
-    return () => returnFocusRef.current?.focus?.();
-  }, []);
+  const dialogRef = useDialogFocusTrap({ onClose });
 
   useEffect(() => {
     firstFieldRef.current?.focus();
   }, [step]);
-
-  useEffect(() => {
-    function closeOnEscape(event) {
-      if (event.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
 
   function transition(nextStep) {
     setError("");
@@ -255,12 +243,18 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
         "aria-labelledby": "auth-title",
         "data-testid": "auth-dialog",
         "data-auth-step": step,
+        ref: dialogRef,
         onMouseDown: (event) => event.stopPropagation(),
       },
       h("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: onClose }, "×"),
       h("p", { className: "kicker" }, "Členský přístup"),
       h("h2", { id: "auth-title" }, step === "register" ? "Registrace" : "Přihlášení"),
       error && h("div", { className: "authError", role: "alert" }, error),
+      h(
+        "p",
+        { className: "demoBoundary", role: "note" },
+        "Lokální demoverze: data jsou uložena pouze v tomto profilu prohlížeče a nejsou sdílena mezi zařízeními. Nejde o produkčně bezpečné přihlášení.",
+      ),
       form,
       h(DemoInbox, { deliveries, onUseCode: useCode, onOpenLink: openLink }),
       h(DemoCredentials),

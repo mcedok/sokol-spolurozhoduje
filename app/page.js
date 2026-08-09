@@ -13,7 +13,9 @@ import { LandingPage } from "./components/public/LandingPage.js";
 import { NormDetail } from "./components/public/NormDetail.js";
 import { Feedback } from "./components/shared/Feedback.js";
 import { createInitialState } from "./domain/demo-data.js";
+import { useDialogFocusTrap } from "./hooks/use-dialog-focus-trap.js";
 import { useAppController } from "./hooks/use-app-controller.js";
+import { canCreateNorm } from "./security/access-control.js";
 const STATUS_OPTIONS = [
   "Koncept",
   "K p\u0159ipom\xEDnkov\xE1n\xED",
@@ -27,6 +29,7 @@ const initialNormId = createInitialState().norms[0]?.id || "";
 function Home() {
   const controller = useAppController();
   const {
+    state,
     session,
     currentUser,
     view,
@@ -63,7 +66,7 @@ function Home() {
     scrollToTop();
   }
   function openAdmin(id = adminId) {
-    if (!session?.id) {
+    if (!session?.id || !canCreateNorm(currentUser)) {
       normCatalog.actions.requireLogin("administration");
       return;
     }
@@ -77,7 +80,6 @@ function Home() {
   }
   function closeContribution() {
     setSubmissionMode(null);
-    queueMicrotask(() => submissionReturnFocusRef.current?.focus?.());
   }
   function openCreate() {
     createReturnFocusRef.current = document.activeElement;
@@ -85,8 +87,9 @@ function Home() {
   }
   function closeCreate() {
     setShowCreate(false);
-    queueMicrotask(() => createReturnFocusRef.current?.focus?.());
   }
+  const contributionDialogRef = useDialogFocusTrap({ active: Boolean(submissionMode), onClose: closeContribution, returnFocusRef: submissionReturnFocusRef });
+  const createDialogRef = useDialogFocusTrap({ active: showCreate, onClose: closeCreate, returnFocusRef: createReturnFocusRef });
   async function submitContribution(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -138,6 +141,17 @@ function Home() {
     openPublic: openNorm,
     deleteNorm
   };
+  if (state.recoveryRequired) {
+    return /* @__PURE__ */ jsx("main", { children: /* @__PURE__ */ jsxs("section", { className: "recoveryPage", role: "alert", children: [
+      /* @__PURE__ */ jsx("img", { src: "/brand/sokol-symbol.png", alt: "" }),
+      /* @__PURE__ */ jsx("p", { className: "kicker", children: "Bezpečná obnova lokální demoverze" }),
+      /* @__PURE__ */ jsx("h1", { children: "Lokální data nelze bezpečně načíst" }),
+      /* @__PURE__ */ jsx("p", { children: state.recoveryReason === "newer-schema" ? "Data vytvořila novější verze aplikace. Tato verze je nepřepíše." : "Uložená data jsou poškozená nebo nekompatibilní. Zůstala beze změny." }),
+      /* @__PURE__ */ jsx("p", { className: "demoBoundary", children: "Obnova odstraní pouze data této lokální demoverze v aktuálním profilu prohlížeče a nahradí je ukázkovým stavem." }),
+      /* @__PURE__ */ jsx("button", { className: "primaryButton", onClick: actions.resetDemoData, children: "Obnovit ukázková data" })
+    ] }) });
+  }
+  const canAdministerNorms = canCreateNorm(currentUser);
   return /* @__PURE__ */ jsxs("main", { children: [
     /* @__PURE__ */ jsxs("header", { className: "topbar", children: [
       /* @__PURE__ */ jsxs("button", { className: "brand", onClick: () => actions.setView("landing"), children: [
@@ -148,10 +162,10 @@ function Home() {
         ] })
       ] }),
       /* @__PURE__ */ jsxs("nav", { "aria-label": "Hlavn\xED navigace", children: [
-        /* @__PURE__ */ jsx("button", { className: view === "landing" ? "active" : "", onClick: () => actions.setView("landing"), children: "Normy" }),
-        /* @__PURE__ */ jsx("button", { className: view === "detail" ? "active" : "", onClick: () => openNorm(selectedNorm?.id), children: "P\u0159ipom\xEDnkov\xE1n\xED" }),
-        /* @__PURE__ */ jsx("button", { className: view === "admin" ? "active" : "", onClick: () => openAdmin(), children: "Administrace" }),
-        canAccessUserAdministration(currentUser) && /* @__PURE__ */ jsx("button", { className: view === "users" ? "active" : "", onClick: () => actions.setView("users"), children: "U\u017Eivatel\xE9" })
+        /* @__PURE__ */ jsx("button", { className: view === "landing" ? "active" : "", "aria-current": view === "landing" ? "page" : void 0, onClick: () => actions.setView("landing"), children: "Normy" }),
+        /* @__PURE__ */ jsx("button", { className: view === "detail" ? "active" : "", "aria-current": view === "detail" ? "page" : void 0, onClick: () => openNorm(selectedNorm?.id), children: "P\u0159ipom\xEDnkov\xE1n\xED" }),
+        canAdministerNorms && /* @__PURE__ */ jsx("button", { className: view === "admin" ? "active" : "", "aria-current": view === "admin" ? "page" : void 0, onClick: () => openAdmin(), children: "Administrace" }),
+        canAccessUserAdministration(currentUser) && /* @__PURE__ */ jsx("button", { className: view === "users" ? "active" : "", "aria-current": view === "users" ? "page" : void 0, onClick: () => actions.setView("users"), children: "U\u017Eivatel\xE9" })
       ] }),
       /* @__PURE__ */ jsx(
         UserMenu,
@@ -179,12 +193,14 @@ function Home() {
         currentUser,
         permissions: {
           canParticipate: normCatalog.permissions.canParticipate,
-          canManage: normCatalog.permissions.canManageNorm(selectedNorm)
+          canManage: normCatalog.permissions.canManageNorm(selectedNorm),
+          needVote: normCatalog.permissions.needVote?.(selectedNorm),
+          submissionVote: (submissionId) => normCatalog.permissions.submissionVote?.(selectedNorm, submissionId) || 0
         },
         actions: detailActions
       }
     ),
-    view === "admin" && /* @__PURE__ */ jsx(
+    view === "admin" && (canAdministerNorms ? /* @__PURE__ */ jsx(
       NormAdministration,
       {
         norms: normAdministration.norms,
@@ -192,13 +208,17 @@ function Home() {
         currentUser,
         actions: administrationActions
       }
-    ),
+    ) : /* @__PURE__ */ jsxs("section", { className: "adminPage unauthorized", role: "alert", children: [
+      /* @__PURE__ */ jsx("h1", { children: "Administrace je dostupná pouze správcům" }),
+      /* @__PURE__ */ jsx("p", { children: "Běžný člen může číst, komentovat a hlasovat u otevřených norem." })
+    ] })),
     view === "profile" && /* @__PURE__ */ jsx(
       MemberProfile,
       {
         user: currentUser,
         contributions: memberProfile.contributions,
-        votes: memberProfile.votes
+        votes: memberProfile.votes,
+        actions: memberProfile.actions
       }
     ),
     view === "users" && /* @__PURE__ */ jsx(
@@ -214,7 +234,7 @@ function Home() {
         actions: userAdministration.actions
       }
     ),
-    submissionMode && selectedNorm && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeContribution, children: /* @__PURE__ */ jsxs("form", { className: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "contribution-dialog-title", onSubmit: submitContribution, onMouseDown: (event) => event.stopPropagation(), children: [
+    submissionMode && selectedNorm && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeContribution, children: /* @__PURE__ */ jsxs("form", { ref: contributionDialogRef, className: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "contribution-dialog-title", onSubmit: submitContribution, onMouseDown: (event) => event.stopPropagation(), children: [
       /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: closeContribution, children: "\xD7" }),
       /* @__PURE__ */ jsx("p", { className: "kicker", children: selectedNorm.number }),
       /* @__PURE__ */ jsx("h2", { id: "contribution-dialog-title", children: submissionMode === "proposal" ? "Nov\xFD n\xE1vrh zm\u011Bny" : "Nov\xFD koment\xE1\u0159" }),
@@ -236,7 +256,7 @@ function Home() {
         /* @__PURE__ */ jsx("button", { className: "primaryButton", children: "Zve\u0159ejnit" })
       ] })
     ] }) }),
-    showCreate && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeCreate, children: /* @__PURE__ */ jsxs("form", { className: "modal wideModal", role: "dialog", "aria-modal": "true", "aria-labelledby": "create-norm-dialog-title", onSubmit: createNorm, onMouseDown: (event) => event.stopPropagation(), children: [
+    showCreate && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeCreate, children: /* @__PURE__ */ jsxs("form", { ref: createDialogRef, className: "modal wideModal", role: "dialog", "aria-modal": "true", "aria-labelledby": "create-norm-dialog-title", onSubmit: createNorm, onMouseDown: (event) => event.stopPropagation(), children: [
       /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: closeCreate, children: "\xD7" }),
       /* @__PURE__ */ jsx("p", { className: "kicker", children: "Nov\xFD materi\xE1l" }),
       /* @__PURE__ */ jsx("h2", { id: "create-norm-dialog-title", children: "P\u0159edlo\u017Eit normu" }),

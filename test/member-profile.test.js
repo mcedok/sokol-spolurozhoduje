@@ -73,6 +73,29 @@ describe("členský profil", () => {
     expect(screen.getByText("Potřebnost normy: ano")).toBeInTheDocument();
     expect(screen.queryByText("Podpora podnětu: ne")).not.toBeInTheDocument();
   });
+
+  it("nabídne správcům změnu hesla, ale členům ne", async () => {
+    const browserUser = userEvent.setup();
+    const changePassword = vi.fn().mockResolvedValue({ kind: "password_changed" });
+    const { rerender } = render(createElement(MemberProfile, {
+      user,
+      actions: { changePassword },
+    }));
+    expect(screen.queryByRole("heading", { name: "Změna hesla" })).not.toBeInTheDocument();
+
+    rerender(createElement(MemberProfile, {
+      user: { ...user, role: "admin" },
+      actions: { changePassword },
+    }));
+    await browserUser.type(screen.getByLabelText("Současné heslo"), "AdminSokol!2026");
+    await browserUser.type(screen.getByLabelText("Nové heslo"), "NoveAdmin!2028");
+    await browserUser.click(screen.getByRole("button", { name: "Změnit heslo" }));
+
+    expect(changePassword).toHaveBeenCalledWith({
+      currentPassword: "AdminSokol!2026",
+      newPassword: "NoveAdmin!2028",
+    });
+  });
 });
 
 const pageNorm = {
@@ -99,6 +122,7 @@ const pageNorm = {
 
 function pageController(currentUser, view = "landing") {
   return {
+    state: { recoveryRequired: false },
     session: currentUser ? { id: `session-${currentUser.id}`, user: currentUser } : null,
     currentUser,
     view,
@@ -179,6 +203,33 @@ describe("page-level role navigation", () => {
     expect(screen.queryByRole("button", { name: "Uživatelé" })).not.toBeInTheDocument();
   });
 
+  it("běžnému členovi skryje administraci i při přímém view", () => {
+    controller.current = pageController(user, "admin");
+    render(createElement(Home));
+
+    expect(screen.queryByRole("button", { name: "Administrace" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+ Předložit novou normu" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Administrace je dostupná pouze správcům" }))
+      .toBeInTheDocument();
+  });
+
+  it("při poškozených datech zobrazí explicitní obnovu namísto přihlašovací smyčky", async () => {
+    const browserUser = userEvent.setup();
+    const resetDemoData = vi.fn();
+    controller.current = {
+      ...pageController(null),
+      state: { recoveryRequired: true, recoveryReason: "corrupted-json" },
+      actions: { ...pageController(null).actions, resetDemoData },
+    };
+    render(createElement(Home));
+
+    expect(screen.getByRole("heading", { name: "Lokální data nelze bezpečně načíst" }))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Přihlásit" })).not.toBeInTheDocument();
+    await browserUser.click(screen.getByRole("button", { name: "Obnovit ukázková data" }));
+    expect(resetDemoData).toHaveBeenCalledOnce();
+  });
+
   it("otevře ověřenému členovi formulář bez editovatelných polí autora a jednoty", async () => {
     const browserUser = userEvent.setup();
     controller.current = pageController(user, "detail");
@@ -193,7 +244,11 @@ describe("page-level role navigation", () => {
     expect(screen.getByText("Jméno a jednota se bezpečně převezmou z přihlášeného účtu.")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Autor" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Jednota" })).not.toBeInTheDocument();
-    await browserUser.click(within(dialog).getByRole("button", { name: "Zavřít" }));
+    within(dialog).getByRole("button", { name: "Zveřejnit" }).focus();
+    await browserUser.tab();
+    expect(within(dialog).getByRole("button", { name: "Zavřít" })).toHaveFocus();
+    await browserUser.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Nový návrh změny" })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
   });
 
@@ -212,7 +267,10 @@ describe("page-level role navigation", () => {
     const dialog = screen.getByRole("dialog", { name: "Předložit normu" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(within(dialog).getByRole("textbox", { name: "Název normy" })).toHaveFocus();
-    await browserUser.click(within(dialog).getByRole("button", { name: "Zavřít" }));
+    within(dialog).getByRole("button", { name: "Předložit normu" }).focus();
+    await browserUser.tab();
+    expect(within(dialog).getByRole("button", { name: "Zavřít" })).toHaveFocus();
+    await browserUser.keyboard("{Escape}");
     expect(trigger).toHaveFocus();
   });
 });

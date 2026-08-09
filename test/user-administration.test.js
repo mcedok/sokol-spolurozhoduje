@@ -37,6 +37,7 @@ const managedUsers = [
     membershipId: "MEMBER-BRNO-42",
     role: "member",
     status: "active",
+    lastLoginAt: "2026-08-03T11:30:00.000Z",
   },
   {
     id: "admin-invited",
@@ -190,7 +191,10 @@ describe("administrace uživatelů", () => {
       "Jednota / členské ID",
       "Role",
       "Stav",
+      "Poslední přihlášení",
     ]);
+    expect(screen.getByText(/03\.08\.26/)).toBeInTheDocument();
+    expect(screen.getByText(/data zůstávají pouze v tomto profilu prohlížeče/i)).toBeInTheDocument();
 
     const search = screen.getByRole("searchbox", { name: "Hledat uživatele" });
     await user.type(search, "Brno I");
@@ -305,6 +309,46 @@ describe("administrace uživatelů", () => {
 
     await act(async () => finishStatusChange({ status: "invited" }));
     expect(screen.getByRole("button", { name: "Aktivovat účet" })).toBeEnabled();
+  });
+
+  it("synchronizuje lokální výběr role při aktualizaci stejného uživatele", () => {
+    const props = {
+      currentUser: superadmin,
+      users: managedUsers,
+      selectedUser: managedUsers[0],
+      auditEvents: [],
+      summary: {},
+      filters: {},
+      setupDeliveries: [],
+      actions: { transferCandidates: [superadmin] },
+    };
+    const { rerender } = render(createElement(UserAdministration, props));
+    expect(screen.getByRole("combobox", { name: "Role účtu" })).toHaveValue("member");
+
+    rerender(createElement(UserAdministration, {
+      ...props,
+      selectedUser: { ...managedUsers[0], role: "admin" },
+    }));
+
+    expect(screen.getByRole("combobox", { name: "Role účtu" })).toHaveValue("admin");
+  });
+
+  it("dialog nového správce zachytí Tab, reaguje na Escape a vrátí focus", async () => {
+    const user = userEvent.setup();
+    renderAdministration({ users: managedUsers });
+    const launcher = screen.getByRole("button", { name: "Nový administrátor" });
+    launcher.focus();
+    await user.click(launcher);
+
+    const dialog = screen.getByRole("dialog", { name: "Vytvořit administrátora" });
+    const close = within(dialog).getByRole("button", { name: "Zavřít" });
+    const last = within(dialog).getByRole("button", { name: "Vytvořit administrátora" });
+    last.focus();
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Vytvořit administrátora" })).not.toBeInTheDocument();
+    expect(launcher).toHaveFocus();
   });
 
   it("řadič načítá filtrovaná data přes služby a drží setup delivery pouze dočasně", async () => {

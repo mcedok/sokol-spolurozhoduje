@@ -1,6 +1,7 @@
 import { createElement as h, useEffect, useRef, useState } from "react";
 import { DemoInbox } from "../auth/DemoInbox.js";
 import { ROLE, USER_STATUS } from "../../domain/constants.js";
+import { useDialogFocusTrap } from "../../hooks/use-dialog-focus-trap.js";
 
 const ROLE_LABELS = {
   [ROLE.MEMBER]: "Člen",
@@ -23,6 +24,14 @@ const AUDIT_LABELS = {
 
 function fullName(user) {
   return [user?.firstName, user?.lastName].filter(Boolean).join(" ");
+}
+
+function lastLoginLabel(value) {
+  if (!value) return "Dosud neproběhlo";
+  return new Intl.DateTimeFormat("cs-CZ", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function SummaryCard({ label, value }) {
@@ -102,6 +111,7 @@ function UserTable({ users, selectedUser, onSelect }) {
           h("th", { scope: "col", role: "columnheader" }, "Jednota / členské ID"),
           h("th", { scope: "col", role: "columnheader" }, "Role"),
           h("th", { scope: "col", role: "columnheader" }, "Stav"),
+          h("th", { scope: "col", role: "columnheader" }, "Poslední přihlášení"),
         ),
       ),
       h(
@@ -134,9 +144,10 @@ function UserTable({ users, selectedUser, onSelect }) {
               h("td", { role: "cell", "data-label": "Jednota / členské ID" }, h("span", null, user.sokolUnit), h("small", null, user.membershipId)),
               h("td", { role: "cell", "data-label": "Role" }, h("span", { className: `userRole ${user.role}` }, ROLE_LABELS[user.role] || user.role)),
               h("td", { role: "cell", "data-label": "Stav" }, h("span", { className: `userStatus ${user.status}` }, STATUS_LABELS[user.status] || user.status)),
+              h("td", { role: "cell", "data-label": "Poslední přihlášení" }, lastLoginLabel(user.lastLoginAt)),
             ),
           )
-          : h("tr", { role: "row" }, h("td", { role: "cell", colSpan: 4, className: "userTableEmpty" }, "Filtru neodpovídá žádný uživatel.")),
+          : h("tr", { role: "row" }, h("td", { role: "cell", colSpan: 5, className: "userTableEmpty" }, "Filtru neodpovídá žádný uživatel.")),
       ),
     ),
   );
@@ -151,6 +162,12 @@ function UserManagementActions({ user, actions }) {
     role === ROLE.MEMBER &&
     [ROLE.ADMIN, ROLE.SUPERADMIN].includes(user.role) &&
     user.ownedNormCount > 0;
+
+  useEffect(() => {
+    setRole(user.role);
+    setTransferUserId("");
+    setError("");
+  }, [user.id, user.role]);
 
   async function changeStatus() {
     if (statusPending) return;
@@ -285,12 +302,10 @@ function UserDetail({ user, auditEvents, actions }) {
 
 function CreateUserDialog({ onClose, onCreate }) {
   const firstFieldRef = useRef(null);
-  const returnFocusRef = useRef(null);
+  const dialogRef = useDialogFocusTrap({ onClose });
 
   useEffect(() => {
-    returnFocusRef.current = document.activeElement;
     firstFieldRef.current?.focus();
-    return () => returnFocusRef.current?.focus?.();
   }, []);
 
   async function submit(event) {
@@ -317,6 +332,7 @@ function CreateUserDialog({ onClose, onCreate }) {
         role: "dialog",
         "aria-modal": "true",
         "aria-labelledby": "create-user-title",
+        ref: dialogRef,
         onSubmit: submit,
         onMouseDown: (event) => event.stopPropagation(),
       },
@@ -387,6 +403,11 @@ export function UserAdministration({
       h(SummaryCard, { label: "Aktivní", value: summary.active }),
       h(SummaryCard, { label: "Pozvaní", value: summary.invited }),
       h(SummaryCard, { label: "Blokovaní", value: summary.blocked }),
+    ),
+    h(
+      "p",
+      { className: "demoBoundary", role: "note" },
+      "Lokální demoverze: data zůstávají pouze v tomto profilu prohlížeče. Produkční správa uživatelů vyžaduje serverovou databázi a autorizaci.",
     ),
     h(DemoInbox, {
       deliveries: setupDeliveries,

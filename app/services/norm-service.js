@@ -8,12 +8,15 @@ import {
 const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const ACTIVE_STATUSES = new Set(["K připomínkování", "Vypořádání", "Ke schválení"]);
 const CLOSED_STATUSES = new Set(["Schváleno", "Neschváleno", "Archivováno"]);
+const PARTICIPATION_STATUS = "K připomínkování";
+const RESOLUTION_STATUSES = new Set(["Nevypořádáno", "Zapracováno", "Nezapracováno"]);
 const UPDATE_FIELDS = new Set([
   "title",
   "category",
   "version",
   "status",
   "commentsOpen",
+  "closureReason",
   "publishedAt",
   "deadline",
   "submittedBy",
@@ -23,6 +26,7 @@ const UPDATE_FIELDS = new Set([
 ]);
 
 const ERROR_MESSAGES = {
+  CLOSURE_REASON_REQUIRED: "Při uzavření připomínek uveďte důvod.",
   COMMENTS_CLOSED: "Připomínkování této normy je uzavřeno.",
   FILE_TOO_LARGE: "Soubor může mít nejvýše 15 MB.",
   INVALID_CONTRIBUTION: "Vyplňte název a text příspěvku.",
@@ -56,6 +60,12 @@ function publicTitle(norm) {
     title: norm.title,
     visibilityMode: norm.visibilityMode,
   };
+}
+
+function assertParticipationOpen(norm) {
+  if (!norm.commentsOpen || norm.status !== PARTICIPATION_STATUS) {
+    throw new NormServiceError("COMMENTS_CLOSED");
+  }
 }
 
 export function createNormService({ repository, auth, audit, fileRepository, now }) {
@@ -176,6 +186,7 @@ export function createNormService({ repository, auth, audit, fileRepository, now
       commentsOpen: CLOSED_STATUSES.has(status)
         ? false
         : input?.commentsOpen ?? status === "K připomínkování",
+      closureReason: "",
       publishedAt:
         normalizeText(input?.publishedAt) ||
         (status === "K připomínkování" ? new Date(timestamp).toISOString().slice(0, 10) : ""),
@@ -242,6 +253,14 @@ export function createNormService({ repository, auth, audit, fileRepository, now
     if (CLOSED_STATUSES.has(changes.status ?? current.status)) {
       changes.commentsOpen = false;
     }
+    const nextCommentsOpen = changes.commentsOpen ?? current.commentsOpen;
+    if (current.commentsOpen && !nextCommentsOpen) {
+      const closureReason = normalizeText(changes.closureReason ?? current.closureReason);
+      if (!closureReason) throw new NormServiceError("CLOSURE_REASON_REQUIRED");
+      changes.closureReason = closureReason;
+    } else if (!current.commentsOpen && nextCommentsOpen) {
+      changes.closureReason = "";
+    }
     const state = repository.update((draft) => {
       Object.assign(findNorm(draft, normId), changes);
     });
@@ -303,9 +322,7 @@ export function createNormService({ repository, auth, audit, fileRepository, now
     const actor = participatingActor(sessionId, "norm.add_contribution", normId);
     const state = repository.read();
     const norm = findNorm(state, normId);
-    if (!norm.commentsOpen || CLOSED_STATUSES.has(norm.status)) {
-      throw new NormServiceError("COMMENTS_CLOSED");
-    }
+    assertParticipationOpen(norm);
     const title = normalizeText(input?.title);
     const text = normalizeText(input?.text);
     if (!title || !text) throw new NormServiceError("INVALID_CONTRIBUTION");
@@ -353,6 +370,7 @@ export function createNormService({ repository, auth, audit, fileRepository, now
   async function voteSubmission(sessionId, normId, submissionId, direction) {
     const actor = participatingActor(sessionId, "norm.vote_submission", normId);
     if (![1, -1].includes(direction)) throw new NormServiceError("INVALID_VOTE");
+    assertParticipationOpen(findNorm(repository.read(), normId));
     const key = `submission:${actor.id}:${normId}:${submissionId}`;
     const state = repository.update((draft) => {
       const submission = findSubmission(findNorm(draft, normId), submissionId);
@@ -370,6 +388,7 @@ export function createNormService({ repository, auth, audit, fileRepository, now
   async function voteNeed(sessionId, normId, value) {
     const actor = participatingActor(sessionId, "norm.vote_need", normId);
     if (!["yes", "no"].includes(value)) throw new NormServiceError("INVALID_VOTE");
+    assertParticipationOpen(findNorm(repository.read(), normId));
     const key = `need:${actor.id}:${normId}`;
     const state = repository.update((draft) => {
       const norm = findNorm(draft, normId);
@@ -392,7 +411,9 @@ export function createNormService({ repository, auth, audit, fileRepository, now
   async function resolveSubmission(sessionId, normId, submissionId, resolution) {
     const { actor, norm } = managedNorm(sessionId, normId, "norm.resolve_submission");
     const resolutionStatus = normalizeText(resolution?.resolutionStatus);
-    if (!resolutionStatus) throw new NormServiceError("INVALID_RESOLUTION");
+    if (!RESOLUTION_STATUSES.has(resolutionStatus)) {
+      throw new NormServiceError("INVALID_RESOLUTION");
+    }
     const state = repository.update((draft) => {
       Object.assign(findSubmission(findNorm(draft, normId), submissionId), {
         resolutionStatus,

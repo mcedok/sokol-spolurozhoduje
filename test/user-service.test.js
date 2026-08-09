@@ -120,6 +120,37 @@ describe("user service", () => {
     });
   });
 
+  it("audits every denied user-management entry point without session or credential metadata", async () => {
+    const { adminSession, repository, users } = harness;
+
+    expect(() => users.listUsers(adminSession.id)).toThrow(expect.objectContaining({ code: "manage_users" }));
+    expect(() => users.getUser(adminSession.id, "missing-user")).toThrow(
+      expect.objectContaining({ code: "manage_users" }),
+    );
+    await expect(
+      users.createPrivilegedUser(adminSession.id, privilegedProfile()),
+    ).rejects.toMatchObject({ code: "manage_users" });
+    await expect(
+      users.setUserStatus(adminSession.id, "missing-user", USER_STATUS.BLOCKED),
+    ).rejects.toMatchObject({ code: "manage_users" });
+    await expect(
+      users.changeUserRole(adminSession.id, "missing-user", ROLE.MEMBER),
+    ).rejects.toMatchObject({ code: "manage_users" });
+
+    const denied = repository.read().auditEvents.filter(
+      (event) => event.action === "authorization.denied" && event.targetType === "user",
+    );
+    expect(denied.map((event) => event.metadata.requestedAction)).toEqual([
+      "user.list",
+      "user.read",
+      "user.create",
+      "user.status_change",
+      "user.role_change",
+    ]);
+    expect(denied.every((event) => event.actorUserId === adminSession.userId)).toBe(true);
+    expect(JSON.stringify(denied)).not.toMatch(/sessionId|password|token|code/i);
+  });
+
   it("rejects a duplicate e-mail after normalizing whitespace and letter case", async () => {
     const { repository, superadminSession, users } = harness;
     const before = repository.read();

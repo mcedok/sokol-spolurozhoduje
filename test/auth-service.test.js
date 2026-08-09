@@ -88,56 +88,28 @@ describe("auth service", () => {
     });
   });
 
-  it("keeps exact demo credentials bound to seeded roles when stored emails collide", async () => {
+  it("does not restore the public administrator credential after the seed account changes role", async () => {
     const { auth, repository } = harness;
     repository.update((state) => {
-      state.users.find((user) => user.id === "user-admin-demo").email = "upraveny-admin@example.cz";
-      state.users.find((user) => user.id === "user-member-demo").email = "upraveny-clen@example.cz";
-      state.users.push(
-        {
-          id: "collision-member",
-          firstName: "Kolizní",
-          lastName: "Člen",
-          email: MODEL_CREDENTIALS.admin.email,
-          sokolUnit: "TJ Sokol Kolize",
-          membershipId: "COLLISION-MEMBER",
-          role: ROLE.MEMBER,
-          status: USER_STATUS.ACTIVE,
-          emailVerifiedAt: "2026-01-01T00:00:00.000Z",
-        },
-        {
-          id: "collision-admin",
-          firstName: "Kolizní",
-          lastName: "Správce",
-          email: MODEL_CREDENTIALS.member.email,
-          sokolUnit: "TJ Sokol Kolize",
-          membershipId: "COLLISION-ADMIN",
-          role: ROLE.ADMIN,
-          status: USER_STATUS.ACTIVE,
-          emailVerifiedAt: "2026-01-01T00:00:00.000Z",
-        },
-      );
+      const seededAdmin = state.users.find((user) => user.id === "user-admin-demo");
+      seededAdmin.role = ROLE.MEMBER;
+      seededAdmin.status = USER_STATUS.ACTIVE;
+      delete seededAdmin.passwordHash;
+      delete seededAdmin.passwordSalt;
     });
 
     await auth.ensureDemoCredentials();
 
-    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).toEqual({ kind: "password" });
-    const adminSession = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
-    expect(auth.getSession(adminSession.id).user).toMatchObject({
-      role: ROLE.ADMIN,
-      email: MODEL_CREDENTIALS.admin.email,
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).toEqual({ kind: "member" });
+    await expect(auth.loginWithPassword(MODEL_CREDENTIALS.admin)).rejects.toMatchObject({
+      code: "INVALID_CREDENTIALS",
     });
-    const memberDelivery = await auth.requestMemberCode(MODEL_CREDENTIALS.member.email);
-    expect(memberDelivery.demoCode).toBe(MODEL_CREDENTIALS.member.code);
-    await expect(
-      auth.verifyMemberCode({
-        challengeId: memberDelivery.challengeId,
-        code: MODEL_CREDENTIALS.member.code,
-      }),
-    ).resolves.toMatchObject({ userId: memberDelivery.userId });
-    expect(repository.read().users.find((user) => user.id === "collision-member").email).toBe(
-      MODEL_CREDENTIALS.admin.email,
+    const matchingUsers = repository.read().users.filter(
+      (user) => user.email.toLowerCase() === MODEL_CREDENTIALS.admin.email,
     );
+    expect(matchingUsers).toHaveLength(1);
+    expect(matchingUsers[0]).toMatchObject({ id: "user-admin-demo", role: ROLE.MEMBER });
+    expect(matchingUsers[0]).not.toHaveProperty("demoCredential");
   });
 
   it("registers a member and exchanges the one-time code for an eight-hour session", async () => {
@@ -392,6 +364,42 @@ describe("auth service", () => {
     await expect(
       auth.completePasswordReset({ token: delivery.demoToken, password: "AnotherSokol!2027" }),
     ).rejects.toMatchObject({ code: "TOKEN_USED" });
+  });
+
+  it("revokes older active reset links when a newer reset is issued and completed", async () => {
+    const { auth, repository } = harness;
+    await auth.ensureDemoCredentials();
+
+    const older = await auth.requestPasswordReset(MODEL_CREDENTIALS.admin.email);
+    const newer = await auth.requestPasswordReset(MODEL_CREDENTIALS.admin.email);
+
+    expect(repository.read().challenges.find((challenge) => challenge.id === older.challengeId))
+      .toMatchObject({ revokedAt: expect.anything() });
+    await auth.completePasswordReset({ token: newer.demoToken, password: "NewerSokol!2028" });
+    await expect(
+      auth.completePasswordReset({ token: older.demoToken, password: "OlderSokol!2028" }),
+    ).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+  });
+
+  it("stores last login time for both password and member-code sessions without auditing bearer ids", async () => {
+    const { auth, clock, repository } = harness;
+    await auth.ensureDemoCredentials();
+
+    const adminSession = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+    const memberDelivery = await auth.requestMemberCode(MODEL_CREDENTIALS.member.email);
+    clock.advance(1_000);
+    await auth.verifyMemberCode({
+      challengeId: memberDelivery.challengeId,
+      code: MODEL_CREDENTIALS.member.code,
+    });
+
+    const state = repository.read();
+    expect(state.users.find((user) => user.id === adminSession.userId).lastLoginAt).toBe(
+      adminSession.createdAt,
+    );
+    expect(state.users.find((user) => user.id === "user-member-demo").lastLoginAt).toBe(clock.now());
+    expect(JSON.stringify(state.auditEvents)).not.toContain(adminSession.id);
+    expect(JSON.stringify(state.auditEvents)).not.toMatch(/sessionId/i);
   });
 
   it("rejects expired, logged-out, revoked, and blocked-account sessions", async () => {

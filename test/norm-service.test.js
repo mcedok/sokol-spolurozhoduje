@@ -125,7 +125,12 @@ async function createHarness() {
 
 async function runManagedAction(norms, action, sessionId, normId) {
   if (action === "status") return norms.update(sessionId, normId, { status: "Ke schválení" });
-  if (action === "close") return norms.update(sessionId, normId, { commentsOpen: false });
+  if (action === "close") {
+    return norms.update(sessionId, normId, {
+      commentsOpen: false,
+      closureReason: "Sběr připomínek byl řádně ukončen.",
+    });
+  }
   if (action === "document") {
     return norms.replaceDocument(sessionId, normId, {
       name: `${normId}.pdf`,
@@ -274,10 +279,30 @@ describe("norm service", () => {
 
   it("refuses a new contribution after the owner closes collection", async () => {
     const { adminSession, norms } = harness;
-    await norms.update(adminSession.id, "norm-001", { commentsOpen: false });
+    await norms.update(adminSession.id, "norm-001", {
+      commentsOpen: false,
+      closureReason: "Uplynula zveřejněná lhůta.",
+    });
 
     await expect(norms.addContribution("session-member", "norm-001", contributionInput())).rejects.toBeInstanceOf(NormServiceError);
     await expect(norms.addContribution("session-member", "norm-001", contributionInput())).rejects.toMatchObject({ code: "COMMENTS_CLOSED" });
+  });
+
+  it("requires a closure reason and accepts only documented resolution states", async () => {
+    const { adminSession, norms, repository } = harness;
+    const before = repository.read();
+
+    await expect(
+      norms.update(adminSession.id, "norm-001", { commentsOpen: false }),
+    ).rejects.toMatchObject({ code: "CLOSURE_REASON_REQUIRED" });
+    await expect(
+      norms.resolveSubmission(adminSession.id, "norm-001", "sub-1", {
+        resolutionStatus: "Libovolný stav",
+        resolution: "Neplatné vypořádání.",
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_RESOLUTION" });
+
+    expect(repository.read().norms).toEqual(before.norms);
   });
 
   it.each(["Schváleno", "Neschváleno", "Archivováno"])(
@@ -285,10 +310,11 @@ describe("norm service", () => {
     async (status) => {
       const { adminSession, norms, repository } = harness;
 
-      const result = await norms.update(adminSession.id, "norm-001", {
-        status,
-        commentsOpen: true,
-      });
+        const result = await norms.update(adminSession.id, "norm-001", {
+          status,
+          commentsOpen: true,
+          closureReason: "Proces byl uzavřen rozhodnutím předkladatele.",
+        });
 
       expect(result.norm).toMatchObject({ status, commentsOpen: false });
       expect(repository.read().norms[0]).toMatchObject({ status, commentsOpen: false });
@@ -338,6 +364,27 @@ describe("norm service", () => {
     expect(state.norms[0].needVotes).toEqual({ yes: 72, no: 29 });
     expect(state.votes).toMatchObject({ "need:member-verified:norm-001": "no" });
     expect(Object.keys(state.votes).filter((key) => key.includes("member-verified:norm-001"))).toHaveLength(1);
+  });
+
+  it.each([
+    { status: "K připomínkování", commentsOpen: false },
+    { status: "Archivováno", commentsOpen: true },
+  ])("rejects both vote kinds when the norm is not actively open: $status / $commentsOpen", async (patch) => {
+    const { norms, repository } = harness;
+    repository.update((state) => Object.assign(state.norms[0], patch));
+    const before = repository.read();
+
+    await expect(
+      norms.voteSubmission("session-member", "norm-001", "sub-1", 1),
+    ).rejects.toMatchObject({ code: "COMMENTS_CLOSED" });
+    await expect(
+      norms.voteNeed("session-member", "norm-001", "yes"),
+    ).rejects.toMatchObject({ code: "COMMENTS_CLOSED" });
+
+    const after = repository.read();
+    expect(after.norms[0].submissions[0].score).toBe(before.norms[0].submissions[0].score);
+    expect(after.norms[0].needVotes).toEqual(before.norms[0].needVotes);
+    expect(after.votes).toEqual(before.votes);
   });
 
   it("audits denied direct participation calls and does not mutate votes", async () => {

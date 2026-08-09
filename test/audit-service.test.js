@@ -19,6 +19,8 @@ describe("audit service", () => {
         code: "123456",
         nested: {
           token: "session-token",
+          sessionId: "live-bearer-session",
+          ResetToken: "mixed-case-token",
           passwordHash: "hash",
           passwordSalt: "salt",
           retained: "safe value",

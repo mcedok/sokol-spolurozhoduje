@@ -3,14 +3,22 @@ import { createBrowserRepository } from "../app/data/browser-repository.js";
 import { createInitialState } from "../app/domain/demo-data.js";
 
 describe("browser repository", () => {
-  it("migrates legacy demo addresses and adds the documented demo member without replacing user changes", () => {
+  it("migrates legacy seed fields without restoring removed users or replacing changed identities", () => {
     localStorage.setItem(
       "sokol-spolurozhoduje-pilot-v2",
       JSON.stringify({
         schemaVersion: 3,
         users: [
           { id: "user-superadmin-demo", email: "superadmin@sokol.cz", firstName: "Petra" },
-          { id: "user-admin-demo", email: "vlastni-adresa@example.cz", firstName: "Martin" },
+          {
+            id: "user-admin-demo",
+            email: "administrator@sokol.demo",
+            firstName: "Martin",
+            role: "member",
+            status: "active",
+            emailVerifiedAt: "2026-01-01T00:00:00.000Z",
+            demoCredential: "admin",
+          },
         ],
         norms: [],
       }),
@@ -24,18 +32,28 @@ describe("browser repository", () => {
       membershipId: "DEMO-SUPERADMIN-001",
     });
     expect(state.users.find((user) => user.id === "user-admin-demo")).toMatchObject({
-      email: "vlastni-adresa@example.cz",
+      email: "administrator@sokol.demo",
       sokolUnit: "TJ Sokol Praha",
       membershipId: "DEMO-ADMIN-001",
+      role: "member",
     });
-    expect(state.users.find((user) => user.email === "administrator@sokol.demo")).toMatchObject({
-      role: "admin",
-      status: "active",
+    expect(state.users.find((user) => user.id === "user-admin-demo")).not.toHaveProperty("demoCredential");
+    expect(state.users.filter((user) => user.email.toLowerCase() === "administrator@sokol.demo")).toHaveLength(1);
+    expect(state.users.find((user) => user.id === "user-member-demo")).toBeUndefined();
+  });
+
+  it("does not overwrite storage created by a newer schema", () => {
+    const futureState = JSON.stringify({ schemaVersion: 99, users: [{ id: "future-user" }] });
+    localStorage.setItem("sokol-spolurozhoduje-pilot-v2", futureState);
+
+    const state = createBrowserRepository({ storage: localStorage }).read();
+
+    expect(state).toMatchObject({
+      schemaVersion: 3,
+      recoveryRequired: true,
+      recoveryReason: "newer-schema",
     });
-    expect(state.users.find((user) => user.id === "user-member-demo")).toMatchObject({
-      email: "clen@sokol.demo",
-      membershipId: "DEMO-CLEN-001",
-    });
+    expect(localStorage.getItem("sokol-spolurozhoduje-pilot-v2")).toBe(futureState);
   });
 
   it("migrates v2 norms to the access-control schema", () => {
@@ -88,7 +106,11 @@ describe("browser repository", () => {
 
     const state = createBrowserRepository({ storage: localStorage, now: () => 1 }).read();
 
-    expect(state).toMatchObject({ schemaVersion: 3, recoveryRequired: true });
+    expect(state).toMatchObject({
+      schemaVersion: 3,
+      recoveryRequired: true,
+      recoveryReason: "corrupted-json",
+    });
     expect(localStorage.getItem("sokol-spolurozhoduje-pilot-v2")).toBe("{not-json");
   });
 

@@ -35,6 +35,12 @@ const DEMO_ROLES = {
   member: ROLE.MEMBER,
 };
 
+const DEMO_SEED_IDS = {
+  superadmin: "user-superadmin-demo",
+  admin: "user-admin-demo",
+  member: "user-member-demo",
+};
+
 export class AuthError extends Error {
   constructor(code) {
     super(ERROR_MESSAGES[code] || "Autentizace se nezdarila.");
@@ -266,6 +272,7 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
       current.usedAt = now();
       user.status = USER_STATUS.ACTIVE;
       user.emailVerifiedAt = now();
+      user.lastLoginAt = session.createdAt;
       state.sessions.push(session);
     });
     record("auth.member_verified", challenge.userId, challenge.userId, { challengeId });
@@ -282,15 +289,32 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
     if (!valid) throw new AuthError("INVALID_CREDENTIALS");
 
     const session = createSessionRecord(user.id);
-    repository.update((state) => state.sessions.push(session));
-    record("auth.password_login", user.id, user.id, { sessionId: session.id });
+    repository.update((state) => {
+      state.sessions.push(session);
+      state.users.find((candidate) => candidate.id === user.id).lastLoginAt = session.createdAt;
+    });
+    record("auth.password_login", user.id, user.id);
     return session;
   }
 
   async function issuePasswordChallenge(type, user, actorUserId) {
     const demoToken = cryptoAdapter.randomToken();
     const challenge = await createChallenge(type, user.id, demoToken, LIMITS.passwordLinkMs);
-    repository.update((state) => state.challenges.push(challenge));
+    repository.update((state) => {
+      if (type === CHALLENGE_TYPE.RESET_PASSWORD) {
+        for (const candidate of state.challenges) {
+          if (
+            candidate.userId === user.id &&
+            candidate.type === CHALLENGE_TYPE.RESET_PASSWORD &&
+            candidate.usedAt === null &&
+            candidate.revokedAt === null
+          ) {
+            candidate.revokedAt = challenge.createdAt;
+          }
+        }
+      }
+      state.challenges.push(challenge);
+    });
     record(
       type === CHALLENGE_TYPE.SET_PASSWORD
         ? "auth.password_setup_requested"
@@ -344,12 +368,26 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
       current.usedAt = now();
       user.passwordHash = credential.hash;
       user.passwordSalt = credential.salt;
+      user.passwordUpdatedAt = now();
       if (type === CHALLENGE_TYPE.SET_PASSWORD) {
         user.status = USER_STATUS.ACTIVE;
         user.emailVerifiedAt ||= now();
       }
       for (const session of state.sessions) {
         if (session.userId === user.id && session.revokedAt === null) session.revokedAt = now();
+      }
+      if (type === CHALLENGE_TYPE.RESET_PASSWORD) {
+        for (const sibling of state.challenges) {
+          if (
+            sibling.id !== current.id &&
+            sibling.userId === user.id &&
+            sibling.type === CHALLENGE_TYPE.RESET_PASSWORD &&
+            sibling.usedAt === null &&
+            sibling.revokedAt === null
+          ) {
+            sibling.revokedAt = now();
+          }
+        }
       }
     });
     record(
@@ -392,6 +430,7 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
       const user = state.users.find((candidate) => candidate.id === session.userId);
       user.passwordHash = credential.hash;
       user.passwordSalt = credential.salt;
+      user.passwordUpdatedAt = now();
       for (const current of state.sessions) {
         if (current.userId === user.id && current.revokedAt === null) current.revokedAt = now();
       }
@@ -401,9 +440,15 @@ export function createAuthService({ repository, audit, cryptoAdapter, now }) {
   }
 
   async function ensureDemoCredentials() {
-    for (const credential of Object.values(DEMO_CREDENTIALS)) {
+    for (const [credentialName, credential] of Object.entries(DEMO_CREDENTIALS)) {
       if (!credential.password) continue;
-      const user = findUserByEmail(credential.email);
+      const user = repository.read().users.find(
+        (candidate) =>
+          candidate.id === DEMO_SEED_IDS[credentialName] &&
+          candidate.demoCredential === credentialName &&
+          candidate.role === DEMO_ROLES[credentialName] &&
+          normalizeEmail(candidate.email) === normalizeEmail(credential.email),
+      );
       if (!user || user.passwordHash) continue;
 
       const passwordCredential = await cryptoAdapter.hashSecret(credential.password);

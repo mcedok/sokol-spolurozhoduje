@@ -2,12 +2,14 @@ import { createInitialState, deriveNormSequenceByYear } from "../domain/demo-dat
 
 const STORAGE_KEY = "sokol-spolurozhoduje-pilot-v2";
 const DEFAULT_OWNER_ADMIN_ID = "user-admin-demo";
+const CURRENT_SCHEMA_VERSION = 3;
 
 function migrateNorm(norm) {
   return {
     ...norm,
     ownerAdminId: norm.ownerAdminId || DEFAULT_OWNER_ADMIN_ID,
     visibilityMode: norm.visibilityMode || "public-detail",
+    closureReason: norm.closureReason || "",
   };
 }
 
@@ -17,46 +19,32 @@ const LEGACY_DEMO_EMAILS = {
 };
 
 function migrateUsers(users, initialUsers) {
-  const migrated = (users || initialUsers).map((user) => {
+  if (!Array.isArray(users)) return initialUsers;
+
+  return users.map((user) => {
     const initialUser = initialUsers.find((candidate) => candidate.id === user.id);
     if (!initialUser) return user;
+    const email = user.email === LEGACY_DEMO_EMAILS[user.id] ? initialUser.email : user.email;
+    const role = user.role ?? initialUser.role;
     const retainsSeedIdentity =
-      user.email === LEGACY_DEMO_EMAILS[user.id] ||
-      user.email?.toLowerCase() === initialUser.email.toLowerCase();
-    return {
+      role === initialUser.role &&
+      (user.email === LEGACY_DEMO_EMAILS[user.id] ||
+        email?.toLowerCase() === initialUser.email.toLowerCase());
+    const migrated = {
+      ...initialUser,
       ...user,
-      email: user.email === LEGACY_DEMO_EMAILS[user.id] ? initialUser.email : user.email,
+      email,
+      role,
       sokolUnit: user.sokolUnit ?? initialUser.sokolUnit,
       membershipId: user.membershipId ?? initialUser.membershipId,
-      demoCredential:
-        user.demoCredential ?? (retainsSeedIdentity ? initialUser.demoCredential : undefined),
     };
+    for (const credentialField of ["passwordHash", "passwordSalt", "passwordUpdatedAt"]) {
+      if (!Object.prototype.hasOwnProperty.call(user, credentialField)) delete migrated[credentialField];
+    }
+    if (retainsSeedIdentity) migrated.demoCredential = initialUser.demoCredential;
+    else delete migrated.demoCredential;
+    return migrated;
   });
-
-  for (const initialUser of initialUsers) {
-    if (
-      migrated.some(
-        (user) =>
-          user.demoCredential === initialUser.demoCredential &&
-          user.email?.toLowerCase() === initialUser.email.toLowerCase() &&
-          user.role === initialUser.role,
-      )
-    ) {
-      continue;
-    }
-    if (!migrated.some((user) => user.id === initialUser.id)) {
-      migrated.push(initialUser);
-      continue;
-    }
-    let suffix = 1;
-    let credentialId = `${initialUser.id}-credential`;
-    while (migrated.some((user) => user.id === credentialId)) {
-      suffix += 1;
-      credentialId = `${initialUser.id}-credential-${suffix}`;
-    }
-    migrated.push({ ...initialUser, id: credentialId });
-  }
-  return migrated;
 }
 
 function migrateState(value) {
@@ -67,7 +55,7 @@ function migrateState(value) {
   return {
     ...initialState,
     ...(Array.isArray(value) ? {} : value),
-    schemaVersion: 3,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     norms,
     normSequenceByYear: deriveNormSequenceByYear(
       norms,
@@ -82,16 +70,35 @@ function migrateState(value) {
 }
 
 export function createBrowserRepository({ storage }) {
+  function recoveryState(recoveryReason) {
+    return { ...createInitialState(), recoveryRequired: true, recoveryReason };
+  }
+
   function read() {
     const saved = storage.getItem(STORAGE_KEY);
     if (!saved) return createInitialState();
 
+    let parsed;
     try {
-      const state = migrateState(JSON.parse(saved));
+      parsed = JSON.parse(saved);
+    } catch {
+      return recoveryState("corrupted-json");
+    }
+
+    if (
+      !Array.isArray(parsed) &&
+      Number.isFinite(Number(parsed?.schemaVersion)) &&
+      Number(parsed.schemaVersion) > CURRENT_SCHEMA_VERSION
+    ) {
+      return recoveryState("newer-schema");
+    }
+
+    try {
+      const state = migrateState(parsed);
       storage.setItem(STORAGE_KEY, JSON.stringify(state));
       return state;
     } catch {
-      return { ...createInitialState(), recoveryRequired: true };
+      return recoveryState("incompatible-data");
     }
   }
 

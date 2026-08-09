@@ -19,7 +19,7 @@ const APP_HOST = "localhost";
 const APP_PORT = Number(process.env.SMOKE_ACCESS_PORT || 4175);
 const CDP_HOST = "127.0.0.1";
 const CDP_PORT = Number(process.env.SMOKE_ACCESS_CDP_PORT || 9335);
-const OVERALL_TIMEOUT_MS = Number(process.env.SMOKE_ACCESS_TIMEOUT_MS || 120_000);
+const OVERALL_TIMEOUT_MS = Number(process.env.SMOKE_ACCESS_TIMEOUT_MS || 180_000);
 const STEP_TIMEOUT_MS = 15_000;
 const APP_URL = `http://${APP_HOST}:${APP_PORT}`;
 const CDP_URL = `http://${CDP_HOST}:${CDP_PORT}`;
@@ -224,7 +224,8 @@ async function connectCdp() {
       );
     }
     if (message.method === "Log.entryAdded" && message.params.entry.level === "error") {
-      resourceErrors.push(message.params.entry.text);
+      const { text: entryText, url } = message.params.entry;
+      resourceErrors.push([entryText, url].filter(Boolean).join(" · "));
     }
   });
   socket.addEventListener("close", () => {
@@ -388,9 +389,44 @@ async function runBrowserWorkflows() {
   })`);
   assert(desktopMetrics.overflow <= 1, "desktop public detail has no horizontal overflow at 1440x900", desktopMetrics);
   assert(Boolean(desktopMetrics.heading) && desktopMetrics.reasonVisible, "desktop public norm detail renders its heading and reason report", desktopMetrics);
+  const contributionCtaMetrics = await evaluate(`(() => {
+    const button = document.querySelector('.contributionHeader .primaryButton');
+    const parse = (color) => (color.match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+    const luminance = (color) => {
+      const channels = parse(color).map((value) => {
+        const normalized = value / 255;
+        return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+      return (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2]);
+    };
+    const style = getComputedStyle(button);
+    const foreground = luminance(style.color);
+    const background = luminance(style.backgroundColor);
+    const contrast = (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    return {
+      backgroundColor: style.backgroundColor,
+      color: style.color,
+      contrast,
+    };
+  })()`);
+  assert(
+    contributionCtaMetrics.backgroundColor === "rgb(215, 25, 63)" && contributionCtaMetrics.contrast >= 4.5,
+    "the Návrh změny call-to-action keeps the Sokol red treatment with accessible contrast",
+    contributionCtaMetrics,
+  );
   const desktopScreenshot = await screenshot("desktop-public-detail-1440x900.png");
 
   await setViewport(390, 844, true);
+  const voteTargetMetrics = await evaluate(`(() => {
+    const controls = [...document.querySelectorAll('.needVote button, .voteRow button')]
+      .filter(window.__accessSmoke.visible)
+      .map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { label: button.getAttribute('aria-label') || button.textContent.trim(), width: rect.width, height: rect.height };
+      });
+    return { controls, undersized: controls.filter((control) => control.width < 43.5 || control.height < 43.5) };
+  })()`);
+  assert(voteTargetMetrics.controls.length > 0 && voteTargetMetrics.undersized.length === 0, "mobile voting controls provide at least 44x44px targets", voteTargetMetrics);
   await openLogin();
   await setValue('[data-auth-step="identify"] input[name="email"]', "smoke.member@example.cz");
   await clickText(COPY.continue, "[data-auth-step]");
@@ -434,8 +470,50 @@ async function runBrowserWorkflows() {
   })()`);
   assert(codeStepMetrics.codeVisible, "mobile member registration reaches the visible code step", codeStepMetrics);
   assert(codeStepMetrics.overflow <= 1 && codeStepMetrics.undersized.length === 0, "mobile member code-step controls are at least 44px high without horizontal overflow", codeStepMetrics);
-  await evaluate("window.__accessSmoke.click('[data-auth-step] .modalClose')");
-  await waitFor("!document.querySelector('[data-auth-step]')", "registration dialog close");
+  await evaluate("window.__accessSmoke.click('[data-auth-step] .demoInbox button')");
+  await waitFor("document.querySelector('[data-auth-step=\"member-code\"] input[name=\"code\"]')?.value.length === 6", "simulated member code insertion");
+  await evaluate("window.__accessSmoke.click('[data-auth-step=\"member-code\"] form button.primaryButton')");
+  await waitFor("Boolean(document.querySelector('.userMenu.signedIn')) && !document.querySelector('[data-auth-step]')", "completed member registration and login");
+  const memberIdentity = await evaluate(`({
+    identity: document.querySelector('.userMenu.signedIn .userIdentity strong')?.textContent.trim(),
+    adminNavigation: [...document.querySelectorAll('.topbar nav button')]
+      .some((button) => ['Administrace', 'Uživatelé'].includes(button.textContent.trim())),
+  })`);
+  assert(memberIdentity.identity === "Smoke Member" && !memberIdentity.adminNavigation, "verified member is signed in without administrator navigation", memberIdentity);
+
+  const contributionTitle = "Smoke komentář k ověření";
+  await evaluate("window.__accessSmoke.click('.contributionHeader button:not(.primaryButton)')");
+  await waitFor("Boolean(document.querySelector('.modal[role=\"dialog\"] input[name=\"title\"]'))", "member comment dialog");
+  await setValue('.modal[role="dialog"] input[name="section"]', "§ 4 odst. 1");
+  await setValue('.modal[role="dialog"] input[name="title"]', contributionTitle);
+  await setValue('.modal[role="dialog"] textarea[name="text"]', "Browserový smoke komentář ověřuje propojení registrace a aktivní účasti.");
+  await evaluate("window.__accessSmoke.click('.modal[role=\"dialog\"] button.primaryButton')");
+  await waitFor(`!document.querySelector('.modal[role="dialog"]') && document.body.textContent.includes(${JSON.stringify(contributionTitle)})`, "member comment publication");
+  await evaluate("window.__accessSmoke.click('.needVote button:first-child')");
+  await waitFor("document.querySelector('.needVote button:first-child')?.getAttribute('aria-pressed') === 'true'", "member need vote selection");
+  await evaluate(`(() => {
+    const card = [...document.querySelectorAll('.submissionCard')]
+      .find((candidate) => candidate.textContent.includes(${JSON.stringify(contributionTitle)}));
+    const button = card?.querySelector('.voteRow button[aria-label="↑"]');
+    if (!button) throw new Error('Vote control for the smoke contribution was not found.');
+    button.click();
+  })()`);
+  await waitFor(`(() => {
+    const card = [...document.querySelectorAll('.submissionCard')]
+      .find((candidate) => candidate.textContent.includes(${JSON.stringify(contributionTitle)}));
+    return card?.querySelector('.voteRow button[aria-label="↑"]')?.getAttribute('aria-pressed') === 'true';
+  })()`, "member contribution vote selection");
+  await evaluate("window.__accessSmoke.click('.userMenuActions button:first-child')");
+  await waitFor("Boolean(document.querySelector('.memberProfile'))", "member profile");
+  const profileMetrics = await evaluate(`({
+    identity: document.querySelector('.memberProfileHeading h1')?.textContent.trim(),
+    contributionVisible: document.querySelector('#profile-contributions')?.parentElement.textContent.includes(${JSON.stringify(contributionTitle)}),
+    voteCount: document.querySelector('#profile-votes')?.parentElement.querySelectorAll('li').length || 0,
+    passwordForm: Boolean(document.querySelector('.passwordChange')),
+  })`);
+  assert(profileMetrics.identity === "Smoke Member" && profileMetrics.contributionVisible && profileMetrics.voteCount >= 2, "member profile lists the published comment and both votes", profileMetrics);
+  assert(!profileMetrics.passwordForm, "passwordless member profile does not expose administrator password controls", profileMetrics);
+  await logout();
 
   await loginWithPassword("superadmin@sokol.demo", "SuperSokol!2026", "superadministrator");
   await clickText(COPY.users, ".topbar nav");
@@ -485,6 +563,82 @@ async function runBrowserWorkflows() {
     };
   })()`);
   const mobileScreenshot = await screenshot("mobile-user-detail-390x844.png", detailClip);
+
+  const invitedAdminEmail = "smoke.admin@example.cz";
+  const invitedAdminPassword = "SmokeAdmin!2026";
+  await evaluate("window.__accessSmoke.click('.userAdministrationHeading .primaryButton')");
+  await waitFor("Boolean(document.querySelector('#create-user-title'))", "create-administrator dialog");
+  await setValue('.modal input[name="firstName"]', "Smoke");
+  await setValue('.modal input[name="lastName"]', "Admin");
+  await setValue('.modal input[name="email"]', invitedAdminEmail);
+  await setValue('.modal input[name="sokolUnit"]', "TJ Sokol Smoke");
+  await setValue('.modal input[name="membershipId"]', "SMOKE-ADMIN-1");
+  await evaluate("window.__accessSmoke.click('.modal button.primaryButton')");
+  await waitFor(`!document.querySelector('#create-user-title') && [...document.querySelectorAll('.userAdministration > .demoInbox li')].some((item) => item.textContent.includes(${JSON.stringify(invitedAdminEmail)}))`, "administrator invitation delivery");
+  await evaluate(`(() => {
+    const delivery = [...document.querySelectorAll('.userAdministration > .demoInbox li')]
+      .find((item) => item.textContent.includes(${JSON.stringify(invitedAdminEmail)}));
+    if (!delivery) throw new Error('Smoke administrator setup delivery was not found.');
+    delivery.querySelector('button').click();
+  })()`);
+  await waitFor("document.querySelector('[data-auth-step]')?.dataset.authStep === 'set-password'", "administrator first-password setup");
+  await setValue('[data-auth-step="set-password"] input[name="newPassword"]', invitedAdminPassword);
+  await evaluate("window.__accessSmoke.click('[data-auth-step=\"set-password\"] form button.primaryButton')");
+  await waitFor("document.querySelector('[data-auth-step]')?.dataset.authStep === 'identify'", "administrator first password completion");
+  await evaluate("window.__accessSmoke.click('[data-auth-step] .modalClose')");
+  await waitFor("!document.querySelector('[data-auth-step]')", "administrator setup dialog close");
+  const createdUserMetrics = await evaluate(`({
+    rowVisible: [...document.querySelectorAll('.userRowButton')]
+      .some((button) => button.textContent.includes(${JSON.stringify(invitedAdminEmail)})),
+    columns: [...document.querySelectorAll('.userTable thead th')].map((header) => header.textContent.trim()),
+  })`);
+  assert(createdUserMetrics.rowVisible && createdUserMetrics.columns.length === 5, "superadministrator creates an administrator and sees the five-column account table", createdUserMetrics);
+
+  const foreignNormTitle = "Smoke norma vlastněná superadministrátorem";
+  await clickText(COPY.administration, ".topbar nav");
+  await waitFor("Boolean(document.querySelector('.adminPage .adminHeading .primaryButton'))", "superadministrator norm administration");
+  await evaluate("window.__accessSmoke.click('.adminPage .adminHeading .primaryButton')");
+  await waitFor("Boolean(document.querySelector('#create-norm-dialog-title'))", "create-norm dialog");
+  await setValue('.wideModal input[name="title"]', foreignNormTitle);
+  await setValue('.wideModal input[name="category"]', "Směrnice");
+  await setValue('.wideModal input[name="submittedBy"]', "Superadministrátor Smoke");
+  await setValue('.wideModal input[name="responsible"]', "Kancelář ČOS");
+  await setValue('.wideModal select[name="status"]', "K připomínkování");
+  await setValue('.wideModal input[name="deadline"]', "2026-12-31");
+  await setValue('.wideModal textarea[name="summary"]', "Veřejný materiál pro ověření vlastnického omezení administrátora.");
+  await setValue('.wideModal textarea[name="reason"]', "Tato norma vznikla pouze uvnitř izolovaného browserového smoke testu.");
+  await evaluate("window.__accessSmoke.click('.wideModal button.primaryButton')");
+  await waitFor(`!document.querySelector('#create-norm-dialog-title') && document.querySelector('.adminWorkspace h2')?.textContent.trim() === ${JSON.stringify(foreignNormTitle)}`, "superadministrator-owned norm creation");
+  assert(await evaluate(`document.querySelector('.adminWorkspace h2')?.textContent.trim() === ${JSON.stringify(foreignNormTitle)}`), "superadministrator can create and immediately manage a numbered norm");
+  await logout();
+
+  await loginWithPassword(invitedAdminEmail, invitedAdminPassword, "new administrator");
+  await clickText(COPY.administration, ".topbar nav");
+  await waitFor(`document.querySelector('.adminPage h1')?.textContent.trim() === ${JSON.stringify(COPY.myNorms)}`, "new administrator workspace");
+  const foreignNormWorkspace = await evaluate(`({
+    manageableCount: document.querySelectorAll('.adminNormList > button').length,
+    foreignTitlePresent: document.querySelector('.adminPage')?.textContent.includes(${JSON.stringify(foreignNormTitle)}),
+    usersNavigationPresent: [...document.querySelectorAll('.topbar nav button')]
+      .some((button) => button.textContent.trim() === ${JSON.stringify(COPY.users)}),
+  })`);
+  assert(foreignNormWorkspace.manageableCount === 0 && !foreignNormWorkspace.foreignTitlePresent, "new administrator cannot see the superadministrator-owned norm in Moje normy", foreignNormWorkspace);
+  assert(!foreignNormWorkspace.usersNavigationPresent, "new administrator cannot access superadministrator user management", foreignNormWorkspace);
+  await clickText("Normy", ".topbar nav");
+  await waitFor(`[...document.querySelectorAll('.normCard')].some((card) => card.textContent.includes(${JSON.stringify(foreignNormTitle)}))`, "foreign norm in public catalog");
+  await evaluate(`(() => {
+    const card = [...document.querySelectorAll('.normCard')]
+      .find((candidate) => candidate.textContent.includes(${JSON.stringify(foreignNormTitle)}));
+    if (!card) throw new Error('Foreign smoke norm was not found in the public catalog.');
+    card.querySelector('.cardFooter button').click();
+  })()`);
+  await waitFor(`document.querySelector('.detailPage h1')?.textContent.trim() === ${JSON.stringify(foreignNormTitle)}`, "foreign norm public detail");
+  const foreignNormDetail = await evaluate(`({
+    title: document.querySelector('.detailPage h1')?.textContent.trim(),
+    manageControl: [...document.querySelectorAll('.detailActions button')]
+      .some((button) => button.textContent.trim() === 'Spravovat'),
+    replyForms: document.querySelectorAll('.replyForm').length,
+  })`);
+  assert(!foreignNormDetail.manageControl && foreignNormDetail.replyForms === 0, "administrator cannot manage or answer contributions on another owner's public norm", foreignNormDetail);
   await logout();
 
   await loginWithPassword("administrator@sokol.demo", "AdminSokol!2026", "administrator");
@@ -511,8 +665,11 @@ async function runBrowserWorkflows() {
   assert(adminMetrics.heading === COPY.myNorms && adminMetrics.manageableCount > 0 && adminMetrics.activeCount === 1, "administrator sees an owned, selected norm in Moje normy", adminMetrics);
   assert(adminMetrics.workspaceVisible && adminMetrics.workspaceBelowList, "mobile owned-norm workspace is visible below its norm list", adminMetrics);
   assert(!adminMetrics.usersNavigationPresent, "administrator has no superadministrator user-management navigation", adminMetrics);
+  assert(!(await evaluate(`document.querySelector('.adminPage')?.textContent.includes(${JSON.stringify(foreignNormTitle)})`)), "seed administrator workspace excludes the superadministrator-owned norm");
+  await logout();
 
   assert(browserErrors.length === 0, "real-browser workflows emit no runtime exceptions or console errors", browserErrors);
+  assert(resourceErrors.length === 0, "real-browser workflows load all requested resources without HTTP errors", resourceErrors);
   return {
     assertions,
     browserErrors,

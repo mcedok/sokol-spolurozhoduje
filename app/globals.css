@@ -119,6 +119,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px s
 .detailHeader > div > p { color: var(--muted); line-height: 1.55; max-width: 800px; margin: 0; }
 .detailActions { display: flex; gap: 8px; }
 .detailActions > button:not(.primaryButton), .adminToolbar button, .contributionHeader button, .replyForm button, .adminReply button, .modalActions > button:not(.primaryButton) { border: 1px solid var(--line); background: white; padding: 9px 12px; border-radius: 4px; cursor: pointer; font-weight: 700; font-size: 12px; }
+.contributionHeader .primaryButton { border-color: var(--red); background: var(--red); color: white; }
+.contributionHeader .primaryButton:hover { border-color: var(--red-dark); background: var(--red-dark); }
 .detailFacts { display: grid; grid-template-columns: repeat(4, 1fr); margin: 22px 0; background: white; border: 1px solid var(--line); }
 .detailFacts div { padding: 15px 18px; border-right: 1px solid var(--line); }
 .detailFacts div:last-child { border: 0; }
@@ -142,7 +144,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px s
 .needVote { margin-top: 45px; padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 20px; background: var(--canvas); border: 1px solid var(--line); }
 .needVote p { color: var(--muted); font-size: 11px; margin: 5px 0 0; }
 .needVote > div:last-child { display: flex; gap: 6px; }
-.needVote button { border: 1px solid var(--line); background: white; border-radius: 4px; padding: 8px 11px; cursor: pointer; font-weight: 700; }
+.needVote button { min-width: 44px; min-height: 44px; border: 1px solid var(--line); background: white; border-radius: 4px; padding: 8px 11px; cursor: pointer; font-weight: 700; }
 .needVote button.selected.yes { color: var(--green); border-color: #75a58c; background: #eaf3ed; }
 .needVote button.selected.no { color: var(--red); border-color: #d7a0aa; background: #f7e8eb; }
 
@@ -170,7 +172,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px s
 .replyForm button { border-radius: 0 4px 4px 0; }
 .voteRow { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 10px; }
 .voteRow > div { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
-.voteRow button { width: 29px; height: 27px; border: 0; background: white; cursor: pointer; }
+.voteRow button { width: 44px; height: 44px; border: 0; background: white; cursor: pointer; }
 .voteRow button.selected { background: #e8f2eb; color: var(--green); }
 .voteRow button.selected.down { background: #f6e8eb; color: var(--red); }
 .voteRow b { min-width: 28px; text-align: center; }
@@ -244,6 +246,16 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { border-color
 .demoCredentials { background: var(--canvas); }
 .demoWarning { display: inline-block; margin-bottom: 10px; color: var(--red-dark); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
 .demoCredentials li { overflow-wrap: anywhere; font-family: "Sokol Fugner", monospace; font-size: 12px; }
+.demoBoundary { margin: 0 0 14px; padding: 12px 14px; border-left: 3px solid var(--red); background: #faf4f5; color: #5d343b; font-size: 11px; line-height: 1.5; }
+.normEditForm { display: grid; gap: 14px; }
+.normEditActions { position: sticky; bottom: 12px; z-index: 5; display: flex; justify-content: flex-end; padding: 12px; border: 1px solid var(--line); background: #fffffff2; box-shadow: 0 6px 24px #0002; }
+.passwordChange { margin-top: 18px; padding: 22px; border: 1px solid var(--line); background: white; }
+.passwordChange h2 { margin: 0 0 6px; font-family: "Sokol Tyrs", Impact, sans-serif; font-size: 30px; font-weight: 400; text-transform: uppercase; }
+.passwordChange p { margin: 0 0 16px; color: var(--muted); line-height: 1.5; }
+.passwordChange form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+.recoveryPage { max-width: 720px; margin: 70px auto; padding: 34px; border: 1px solid var(--line); background: white; }
+.recoveryPage h1 { margin: 0 0 14px; font-family: "Sokol Tyrs", Impact, sans-serif; font-size: clamp(42px, 6vw, 66px); font-weight: 400; line-height: .95; text-transform: uppercase; }
+.recoveryPage > p { color: var(--muted); line-height: 1.55; }
 .userAdministration { max-width: 1440px; margin: 0 auto; padding: 34px clamp(18px, 4vw, 58px) 90px; }
 .userAdministration.unauthorized { max-width: 760px; margin-top: 50px; border-left: 4px solid var(--red); background: white; }
 .userAdministration.unauthorized h1 { margin: 0 0 10px; font-family: "Sokol Tyrs", Impact, sans-serif; font-size: clamp(34px, 4vw, 50px); font-weight: 400; text-transform: uppercase; }
@@ -386,6 +398,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { border-color
   .authDialog form, .authDialog label, .formGrid > * { min-width: 0; }
   .passwordActions { align-items: stretch; flex-direction: column; }
   .passwordActions .primaryButton { width: 100%; }
+  .passwordChange form { grid-template-columns: 1fr; }
+  .normEditActions { position: static; }
+  .recoveryPage { margin: 24px 12px; padding: 24px 18px; }
   .demoInbox li { align-items: flex-start; flex-direction: column; }
   .userAdministration { padding: 22px 12px 60px; }
   .userAdministration.unauthorized { margin-top: 24px; padding: 24px 18px; }

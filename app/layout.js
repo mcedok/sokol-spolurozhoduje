@@ -8,6 +8,9 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="cs">
+      <head>
+        <link rel="icon" href="/brand/sokol-symbol.png" type="image/png" />
+      </head>
       <body>{children}</body>
     </html>
   );

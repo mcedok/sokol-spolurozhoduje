@@ -1,187 +1,192 @@
-import { jsxs, jsx } from "react/jsx-runtime";
+import { createElement as h } from "react";
+
 const STATUS_CLASSES = {
   Koncept: "neutral",
-  "K p\u0159ipom\xEDnkov\xE1n\xED": "open",
-  Vypo\u0159\u00E1d\u00E1n\u00ED: "review",
-  "Ke schv\xE1len\xED": "review",
-  Schv\u00E1leno: "approved",
-  Neschv\u00E1leno: "rejected",
-  Archivov\u00E1no: "neutral"
+  "K připomínkování": "open",
+  Vypořádání: "review",
+  "Ke schválení": "review",
+  Schváleno: "approved",
+  Neschváleno: "rejected",
+  Archivováno: "neutral",
 };
+
 function dateLabel(value) {
   if (!value) return "neuvedeno";
   return new Intl.DateTimeFormat("cs-CZ", {
     day: "numeric",
     month: "long",
-    year: "numeric"
-  }).format(/* @__PURE__ */ new Date(`${value}T12:00:00`));
+    year: "numeric",
+  }).format(new Date(`${value}T12:00:00`));
 }
+
 function StatusBadge({ value }) {
-  return /* @__PURE__ */ jsx("span", { className: `statusBadge ${STATUS_CLASSES[value] || "neutral"}`, children: value });
+  return h("span", { className: `statusBadge ${STATUS_CLASSES[value] || "neutral"}` }, value);
 }
-function NormDetail({ norm, currentUser, permissions = {}, actions = {} }) {
-  if (!norm) return /* @__PURE__ */ jsx("section", { className: "detailPage", children: /* @__PURE__ */ jsx("div", { className: "emptyState", children: "Norma nebyla nalezena." }) });
+
+export function NormDetail({ norm, currentUser, permissions = {}, actions = {} }) {
+  if (!norm) {
+    return h("section", { className: "detailPage" }, h("div", { className: "emptyState" }, "Norma nebyla nalezena."));
+  }
+  const participationOpen = norm.commentsOpen && norm.status === "K připomínkování";
+
   function participate(intent, operation) {
     if (permissions.canParticipate) return operation?.();
     if (!currentUser) return actions.requireLogin?.(intent);
     return actions.showParticipationUnavailable?.(intent);
   }
+
   async function addReply(event, submissionId) {
     event.preventDefault();
+    if (!permissions.canManage) return;
     const form = event.currentTarget;
     const text = String(new FormData(form).get("reply") || "").trim();
     if (!text) return;
-    const result = await participate(
-      "reply",
-      () => actions.addReply?.(norm.id, submissionId, text)
-    );
+    const result = await actions.addReply?.(norm.id, submissionId, text);
     if (result) form.reset();
   }
+
   if (norm.visibilityMode === "title-only") {
-    return /* @__PURE__ */ jsxs("section", { className: "detailPage", children: [
-      /* @__PURE__ */ jsx("button", { className: "backButton", onClick: actions.onBack, children: "\u2190 Zp\u011Bt na seznam norem" }),
-      /* @__PURE__ */ jsx("div", { className: "detailHeader", children: /* @__PURE__ */ jsxs("div", { children: [
-        /* @__PURE__ */ jsx("h1", { children: norm.title }),
-        /* @__PURE__ */ jsx("p", { children: "Detail t\xE9to normy je dostupn\xFD po p\u0159ihl\xE1\u0161en\xED." })
-      ] }) })
-    ] });
+    return h(
+      "section",
+      { className: "detailPage" },
+      h("button", { className: "backButton", onClick: actions.onBack }, "← Zpět na seznam norem"),
+      h("div", { className: "detailHeader" },
+        h("div", null, h("h1", null, norm.title), h("p", null, "Detail této normy je dostupný po přihlášení.")),
+      ),
+    );
   }
-  return /* @__PURE__ */ jsxs("section", { className: "detailPage", children: [
-    /* @__PURE__ */ jsx("button", { className: "backButton", onClick: actions.onBack, children: "\u2190 Zp\u011Bt na seznam norem" }),
-    /* @__PURE__ */ jsxs("div", { className: "detailHeader", children: [
-      /* @__PURE__ */ jsxs("div", { children: [
-        /* @__PURE__ */ jsxs("div", { className: "detailMeta", children: [
-          /* @__PURE__ */ jsx("span", { className: "normNumber", children: norm.number }),
-          /* @__PURE__ */ jsx(StatusBadge, { value: norm.status })
-        ] }),
-        /* @__PURE__ */ jsx("h1", { children: norm.title }),
-        /* @__PURE__ */ jsx("p", { children: norm.summary })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { className: "detailActions", children: [
-        /* @__PURE__ */ jsx("button", { onClick: () => actions.downloadDocument?.(norm), children: norm.file ? `St\xE1hnout ${norm.file.name}` : "Soubor nen\xED p\u0159ilo\u017Een" }),
-        permissions.canManage && /* @__PURE__ */ jsx("button", { className: "primaryButton small", onClick: () => actions.manage?.(norm.id), children: "Spravovat" })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxs("div", { className: "detailFacts", children: [
-      /* @__PURE__ */ jsxs("div", { children: [
-        /* @__PURE__ */ jsx("span", { children: "P\u0159edkl\xE1d\xE1" }),
-        /* @__PURE__ */ jsx("b", { children: norm.submittedBy })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { children: [
-        /* @__PURE__ */ jsx("span", { children: "Za normu odpov\xEDd\xE1" }),
-        /* @__PURE__ */ jsx("b", { children: norm.responsible })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { children: [
-        /* @__PURE__ */ jsx("span", { children: "Zve\u0159ejn\u011Bno" }),
-        /* @__PURE__ */ jsx("b", { children: dateLabel(norm.publishedAt) })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { children: [
-        /* @__PURE__ */ jsx("span", { children: "Term\xEDn" }),
-        /* @__PURE__ */ jsx("b", { children: dateLabel(norm.deadline) })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxs("div", { className: "detailLayout", children: [
-      /* @__PURE__ */ jsxs("div", { className: "documentColumn", children: [
-        /* @__PURE__ */ jsxs("section", { className: "reasonBox", children: [
-          /* @__PURE__ */ jsx("p", { className: "kicker", children: "Pr\u016Fvodn\xED informace / d\u016Fvodov\xE1 zpr\xE1va" }),
-          /* @__PURE__ */ jsx("h2", { children: "Pro\u010D se norma m\u011Bn\xED" }),
-          /* @__PURE__ */ jsx("p", { children: norm.reason })
-        ] }),
-        /* @__PURE__ */ jsxs("div", { className: "documentPaper", children: [
-          /* @__PURE__ */ jsxs("p", { className: "documentLabel", children: [
-            norm.category,
-            " \xB7 verze ",
-            norm.version
-          ] }),
-          /* @__PURE__ */ jsx("h2", { children: norm.title }),
-          (norm.sections || []).map((section) => /* @__PURE__ */ jsxs("section", { className: "documentSection", children: [
-            /* @__PURE__ */ jsxs("div", { children: [
-              /* @__PURE__ */ jsx("b", { children: section.label }),
-              /* @__PURE__ */ jsx("h3", { children: section.title })
-            ] }),
-            (section.paragraphs || []).map((paragraph, index) => /* @__PURE__ */ jsxs("p", { children: [
-              /* @__PURE__ */ jsxs("span", { children: [
-                "(",
-                index + 1,
-                ")"
-              ] }),
-              paragraph
-            ] }, `${section.id}-${index}`))
-          ] }, section.id)),
-          /* @__PURE__ */ jsxs("div", { className: "needVote", children: [
-            /* @__PURE__ */ jsxs("div", { children: [
-              /* @__PURE__ */ jsx("b", { children: "Je p\u0159ijet\xED t\xE9to normy pot\u0159ebn\xE9?" }),
-              /* @__PURE__ */ jsx("p", { children: "Orienta\u010Dn\xED hlasov\xE1n\xED \u010Dlen\u016F nen\xED kone\u010Dn\xFDm schv\xE1len\xEDm normy." })
-            ] }),
-            /* @__PURE__ */ jsxs("div", { children: [
-              /* @__PURE__ */ jsxs("button", { onClick: () => participate("vote-need", () => actions.voteNeed?.(norm.id, "yes")), children: [
-                "Ano ",
-                norm.needVotes?.yes || 0
-              ] }),
-              /* @__PURE__ */ jsxs("button", { onClick: () => participate("vote-need", () => actions.voteNeed?.(norm.id, "no")), children: [
-                "Ne ",
-                norm.needVotes?.no || 0
-              ] })
-            ] })
-          ] })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxs("aside", { className: "contributions", children: [
-        /* @__PURE__ */ jsxs("div", { className: "contributionHeader", children: [
-          /* @__PURE__ */ jsxs("div", { children: [
-            /* @__PURE__ */ jsx("p", { className: "kicker", children: "Diskuse" }),
-            /* @__PURE__ */ jsx("h2", { children: "Podn\u011Bty \u010Dlen\u016F" })
-          ] }),
-          norm.commentsOpen && /* @__PURE__ */ jsxs("div", { children: [
-            /* @__PURE__ */ jsx("button", { onClick: () => participate("comment", () => actions.openContribution?.("comment")), children: "Koment\xE1\u0159" }),
-            /* @__PURE__ */ jsx("button", { className: "primaryButton small", onClick: () => participate("proposal", () => actions.openContribution?.("proposal")), children: "N\xE1vrh zm\u011Bny" })
-          ] })
-        ] }),
-        !norm.commentsOpen && /* @__PURE__ */ jsx("div", { className: "closedNotice", children: "P\u0159ipom\xEDnkov\xE1n\xED je uzav\u0159eno. V\xFDsledky z\u016Fst\xE1vaj\xED ve\u0159ejn\xE9." }),
-        (norm.submissions || []).length ? norm.submissions.slice().sort((a, b) => b.score - a.score).map((item) => /* @__PURE__ */ jsxs("article", { className: "submissionCard", children: [
-          /* @__PURE__ */ jsxs("div", { className: "submissionTop", children: [
-            /* @__PURE__ */ jsx("span", { children: item.kind }),
-            /* @__PURE__ */ jsx("small", { children: item.section })
-          ] }),
-          /* @__PURE__ */ jsx("h3", { children: item.title }),
-          /* @__PURE__ */ jsx("p", { children: item.text }),
-          /* @__PURE__ */ jsxs("div", { className: "authorLine", children: [
-            /* @__PURE__ */ jsx("b", { children: item.author }),
-            /* @__PURE__ */ jsxs("span", { children: [
-              item.unit,
-              " \xB7 ",
-              dateLabel(item.createdAt)
-            ] })
-          ] }),
-          item.resolutionStatus !== "Nevypo\u0159\xE1d\xE1no" && /* @__PURE__ */ jsxs("div", { className: `resolutionBox ${item.resolutionStatus === "Zapracov\xE1no" ? "accepted" : "declined"}`, children: [
-            /* @__PURE__ */ jsx("b", { children: item.resolutionStatus }),
-            /* @__PURE__ */ jsx("p", { children: item.resolution }),
-            item.adminComment && /* @__PURE__ */ jsxs("small", { children: [
-              "P\u0159edkladatel: ",
-              item.adminComment
-            ] })
-          ] }),
-          (item.replies || []).map((reply) => /* @__PURE__ */ jsxs("div", { className: "reply", children: [
-            /* @__PURE__ */ jsx("b", { children: reply.author }),
-            /* @__PURE__ */ jsx("p", { children: reply.text })
-          ] }, reply.id)),
-          norm.commentsOpen && /* @__PURE__ */ jsxs("form", { className: "replyForm", onSubmit: (event) => addReply(event, item.id), children: [
-            /* @__PURE__ */ jsx("input", { name: "reply", "aria-label": "Odpov\u011B\u010F", placeholder: "Odpov\u011Bd\u011Bt\u2026", required: true }),
-            /* @__PURE__ */ jsx("button", { children: "Odeslat" })
-          ] }),
-          /* @__PURE__ */ jsxs("div", { className: "voteRow", children: [
-            /* @__PURE__ */ jsx("span", { children: "Je tento podn\u011Bt d\u016Fle\u017Eit\xFD?" }),
-            /* @__PURE__ */ jsxs("div", { children: [
-              /* @__PURE__ */ jsx("button", { "aria-label": "\u2191", onClick: () => participate("vote-submission", () => actions.voteSubmission?.(norm.id, item.id, 1)), children: "\u2191" }),
-              /* @__PURE__ */ jsx("b", { children: item.score }),
-              /* @__PURE__ */ jsx("button", { "aria-label": "\u2193", onClick: () => participate("vote-submission", () => actions.voteSubmission?.(norm.id, item.id, -1)), children: "\u2193" })
-            ] })
-          ] })
-        ] }, item.id)) : /* @__PURE__ */ jsx("div", { className: "emptyState", children: "Zat\xEDm nebyl p\u0159id\xE1n \u017E\xE1dn\xFD podn\u011Bt." })
-      ] })
-    ] })
-  ] });
+
+  return h(
+    "section",
+    { className: "detailPage" },
+    h("button", { className: "backButton", onClick: actions.onBack }, "← Zpět na seznam norem"),
+    h(
+      "div",
+      { className: "detailHeader" },
+      h("div", null,
+        h("div", { className: "detailMeta" },
+          h("span", { className: "normNumber" }, norm.number),
+          h(StatusBadge, { value: norm.status }),
+        ),
+        h("h1", null, norm.title),
+        h("p", null, norm.summary),
+      ),
+      h("div", { className: "detailActions" },
+        h("button", { onClick: () => actions.downloadDocument?.(norm) }, norm.file ? `Stáhnout ${norm.file.name}` : "Soubor není přiložen"),
+        permissions.canManage && h("button", { className: "primaryButton small", onClick: () => actions.manage?.(norm.id) }, "Spravovat"),
+      ),
+    ),
+    h("div", { className: "detailFacts" },
+      h("div", null, h("span", null, "Předkládá"), h("b", null, norm.submittedBy)),
+      h("div", null, h("span", null, "Za normu odpovídá"), h("b", null, norm.responsible)),
+      h("div", null, h("span", null, "Zveřejněno"), h("b", null, dateLabel(norm.publishedAt))),
+      h("div", null, h("span", null, "Termín"), h("b", null, dateLabel(norm.deadline))),
+    ),
+    h(
+      "div",
+      { className: "detailLayout" },
+      h(
+        "div",
+        { className: "documentColumn" },
+        h("section", { className: "reasonBox" },
+          h("p", { className: "kicker" }, "Průvodní informace / důvodová zpráva"),
+          h("h2", null, "Proč se norma mění"),
+          h("p", null, norm.reason),
+        ),
+        h(
+          "div",
+          { className: "documentPaper" },
+          h("p", { className: "documentLabel" }, `${norm.category} · verze ${norm.version}`),
+          h("h2", null, norm.title),
+          ...(norm.sections || []).map((section) => h(
+            "section",
+            { className: "documentSection", key: section.id },
+            h("div", null, h("b", null, section.label), h("h3", null, section.title)),
+            ...(section.paragraphs || []).map((paragraph, index) => h(
+              "p",
+              { key: `${section.id}-${index}` },
+              h("span", null, `(${index + 1})`),
+              paragraph,
+            )),
+          )),
+          h(
+            "div",
+            { className: "needVote" },
+            h("div", null,
+              h("b", null, "Je přijetí této normy potřebné?"),
+              h("p", null, "Orientační hlasování členů není konečným schválením normy."),
+            ),
+            participationOpen
+              ? h("div", null,
+                h("button", {
+                  className: permissions.needVote === "yes" ? "selected yes" : "",
+                  "aria-pressed": permissions.needVote === "yes",
+                  onClick: () => participate("vote-need", () => actions.voteNeed?.(norm.id, "yes")),
+                }, `Ano ${norm.needVotes?.yes || 0}`),
+                h("button", {
+                  className: permissions.needVote === "no" ? "selected no" : "",
+                  "aria-pressed": permissions.needVote === "no",
+                  onClick: () => participate("vote-need", () => actions.voteNeed?.(norm.id, "no")),
+                }, `Ne ${norm.needVotes?.no || 0}`),
+              )
+              : h("p", { className: "voteResults" }, `Výsledek: ano ${norm.needVotes?.yes || 0}, ne ${norm.needVotes?.no || 0}`),
+          ),
+        ),
+      ),
+      h(
+        "aside",
+        { className: "contributions" },
+        h("div", { className: "contributionHeader" },
+          h("div", null, h("p", { className: "kicker" }, "Diskuse"), h("h2", null, "Podněty členů")),
+          participationOpen && h("div", null,
+            h("button", { onClick: () => participate("comment", () => actions.openContribution?.("comment")) }, "Komentář"),
+            h("button", { className: "primaryButton small", onClick: () => participate("proposal", () => actions.openContribution?.("proposal")) }, "Návrh změny"),
+          ),
+        ),
+        !participationOpen && h("div", { className: "closedNotice" }, "Aktivní připomínkování je uzavřeno. Výsledky zůstávají veřejné."),
+        (norm.submissions || []).length
+          ? norm.submissions.slice().sort((a, b) => b.score - a.score).map((item) => h(
+            "article",
+            { className: "submissionCard", key: item.id },
+            h("div", { className: "submissionTop" }, h("span", null, item.kind), h("small", null, item.section)),
+            h("h3", null, item.title),
+            h("p", null, item.text),
+            h("div", { className: "authorLine" }, h("b", null, item.author), h("span", null, `${item.unit} · ${dateLabel(item.createdAt)}`)),
+            item.resolutionStatus !== "Nevypořádáno" && h(
+              "div",
+              { className: `resolutionBox ${item.resolutionStatus === "Zapracováno" ? "accepted" : "declined"}` },
+              h("b", null, item.resolutionStatus),
+              h("p", null, item.resolution),
+              item.adminComment && h("small", null, `Předkladatel: ${item.adminComment}`),
+            ),
+            ...(item.replies || []).map((reply) => h("div", { className: "reply", key: reply.id }, h("b", null, reply.author), h("p", null, reply.text))),
+            permissions.canManage && h("form", { className: "replyForm", onSubmit: (event) => addReply(event, item.id) },
+              h("input", { name: "reply", "aria-label": "Odpověď předkladatele", placeholder: "Odpovědět jako předkladatel…", required: true }),
+              h("button", null, "Odeslat"),
+            ),
+            participationOpen
+              ? h("div", { className: "voteRow" },
+                h("span", null, "Je tento podnět důležitý?"),
+                h("div", null,
+                  h("button", {
+                    className: permissions.submissionVote?.(item.id) === 1 ? "selected" : "",
+                    "aria-label": "↑",
+                    "aria-pressed": permissions.submissionVote?.(item.id) === 1,
+                    onClick: () => participate("vote-submission", () => actions.voteSubmission?.(norm.id, item.id, 1)),
+                  }, "↑"),
+                  h("b", null, item.score),
+                  h("button", {
+                    className: permissions.submissionVote?.(item.id) === -1 ? "selected down" : "",
+                    "aria-label": "↓",
+                    "aria-pressed": permissions.submissionVote?.(item.id) === -1,
+                    onClick: () => participate("vote-submission", () => actions.voteSubmission?.(norm.id, item.id, -1)),
+                  }, "↓"),
+                ),
+              )
+              : h("div", { className: "voteRow closed" }, h("span", null, "Výsledná důležitost podnětu"), h("b", null, item.score)),
+          ))
+          : h("div", { className: "emptyState" }, "Zatím nebyl přidán žádný podnět."),
+      ),
+    ),
+  );
 }
-export {
-  NormDetail
-};
