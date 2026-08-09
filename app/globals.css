@@ -28,6 +28,7 @@ html, body { margin: 0; min-height: 100%; background: var(--canvas); color: var(
 body { font-family: Arial, "Segoe UI", sans-serif; font-size: 15px; }
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--red); outline-offset: 3px; }
 
 .topbar {
   height: 68px;
@@ -199,7 +200,7 @@ button { color: inherit; }
 label { display: grid; gap: 6px; color: #4c4c49; font-size: 11px; font-weight: 800; }
 input, textarea, select { width: 100%; border: 1px solid #cdccc6; background: white; border-radius: 4px; padding: 10px; outline: none; color: var(--ink); }
 textarea { min-height: 90px; resize: vertical; line-height: 1.5; }
-input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow: 0 0 0 3px #d7193f13; }
+input:focus-visible, textarea:focus-visible, select:focus-visible { border-color: var(--red); box-shadow: 0 0 0 3px #d7193f38; outline: 2px solid transparent; }
 .wide { grid-column: 1 / -1; }
 .toggleControl { display: flex; justify-content: space-between; gap: 12px; align-items: center; border: 1px solid var(--line); padding: 12px; }
 .toggleControl span { font-size: 11px; }
@@ -220,7 +221,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
 .modalBackdrop { position: fixed; inset: 0; z-index: 60; background: #111a; display: grid; place-items: center; padding: 20px; }
 .modal { width: min(520px, 100%); max-height: 92vh; overflow-y: auto; background: white; padding: 30px; position: relative; box-shadow: 0 20px 60px #0005; }
 .wideModal { width: min(760px, 100%); }
-.modalClose { position: absolute; top: 10px; right: 12px; border: 0; background: transparent; color: var(--muted); font-size: 24px; cursor: pointer; }
+.modalClose { position: absolute; top: 6px; right: 8px; min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--muted); font-size: 24px; cursor: pointer; }
 .modal h2 { font-family: "Sokol Tyrs", Impact, sans-serif; font-size: 37px; text-transform: uppercase; font-weight: 400; margin: 0 0 22px; }
 .modal > label { margin-top: 12px; }
 .formGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
@@ -328,11 +329,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
 
 @media (max-width: 760px) {
   body { font-size: 14px; }
-  .topbar { height: auto; min-height: 58px; padding: 6px 12px; gap: 7px 10px; flex-wrap: wrap; }
+  .topbar { position: static; height: auto; min-height: 58px; padding: 6px 12px; gap: 7px 10px; flex-wrap: wrap; }
   .brand img { width: 34px; height: 34px; }
   .brand span { font-size: 0; }
   .brand strong { font-size: 21px; }
-  .topbar nav { gap: 2px; flex: 1; justify-content: center; }
+  .topbar nav { min-width: 0; gap: 2px; flex: 1; flex-wrap: wrap; justify-content: center; }
   .topbar nav button { padding: 0 8px; font-size: 11px; }
   .userBox { display: none; }
   .userMenu { gap: 3px; }
@@ -378,9 +379,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
   .wide, .toggleControl { grid-column: auto; }
   .resolutionItem { grid-template-columns: 1fr; }
   .adminReply { grid-column: auto; }
-  .modal { padding: 26px 18px; }
+  button, input, select, .linkButton { min-height: 44px; }
+  .modal { width: 100%; max-width: 100%; padding: 26px 18px; }
   .authBackdrop { padding: 8px; }
-  .authDialog { max-height: calc(100vh - 16px); }
+  .authDialog { width: 100%; max-width: 100%; max-height: calc(100vh - 16px); }
+  .authDialog form, .authDialog label, .formGrid > * { min-width: 0; }
   .passwordActions { align-items: stretch; flex-direction: column; }
   .passwordActions .primaryButton { width: 100%; }
   .demoInbox li { align-items: flex-start; flex-direction: column; }
@@ -404,7 +407,6 @@ input:focus, textarea:focus, select:focus { border-color: var(--red); box-shadow
   .userTable td:nth-child(3), .userTable td:nth-child(4) { display: inline-block; width: auto; margin: 6px 6px 0 0; }
   .userRowButton { min-height: 44px; }
   .userDetailPanel { position: static; display: none; margin-top: 12px; padding: 18px; }
-  .userAdministrationLayout.hasDetail .userTableWrap { display: none; }
   .userAdministrationLayout.hasDetail .userDetailPanel { display: block; min-height: calc(100vh - 150px); }
   .userDetailBack { display: inline-flex; margin-bottom: 20px; }
   .memberProfile { padding: 30px 12px 60px; }

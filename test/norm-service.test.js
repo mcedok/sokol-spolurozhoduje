@@ -500,4 +500,88 @@ describe("norm service", () => {
     expect(after.normSequenceByYear).toEqual(before.normSequenceByYear);
     expect(files.size).toBe(0);
   });
+
+  it("audits denial before resolving a nonexistent norm for an invalid management session", async () => {
+    const { norms, repository } = harness;
+
+    await expect(
+      norms.update("invalid-session", "missing-norm", { title: "Neprozrazená norma" }),
+    ).rejects.toBeInstanceOf(AuthorizationError);
+
+    expect(repository.read().auditEvents).toContainEqual(
+      expect.objectContaining({
+        actorUserId: null,
+        action: "authorization.denied",
+        targetType: "norm",
+        targetId: "missing-norm",
+        metadata: { requestedAction: "norm.update", permission: "manage_norm" },
+      }),
+    );
+  });
+
+  it("commits and audits a norm deletion when obsolete file cleanup fails", async () => {
+    const { adminSession, audit, auth, clock, repository } = harness;
+    const norm = repository.read().norms.find((candidate) => candidate.id === "norm-001");
+    const cleanupFailure = new Error("file cleanup failed");
+    const cleanupFailingNorms = createNormService({
+      repository,
+      auth,
+      audit,
+      now: clock.now,
+      fileRepository: {
+        async storeFile() {},
+        async readFile() {},
+        async removeFile(id) {
+          if (id === norm.file?.id) throw cleanupFailure;
+        },
+      },
+    });
+
+    await expect(cleanupFailingNorms.remove(adminSession.id, norm.id)).resolves.toMatchObject({
+      normId: norm.id,
+    });
+    expect(repository.read().norms.some((candidate) => candidate.id === norm.id)).toBe(false);
+    expect(repository.read().auditEvents).toContainEqual(
+      expect.objectContaining({ action: "norm.deleted", targetId: norm.id }),
+    );
+  });
+
+  it("commits and audits a document replacement when obsolete file cleanup fails", async () => {
+    const { adminSession, audit, auth, clock, repository } = harness;
+    const original = repository.read().norms.find((candidate) => candidate.id === "norm-001").file;
+    const files = new Map();
+    const cleanupFailingNorms = createNormService({
+      repository,
+      auth,
+      audit,
+      now: clock.now,
+      fileRepository: {
+        async storeFile(id, file) {
+          files.set(id, file);
+        },
+        async readFile(id) {
+          return files.get(id);
+        },
+        async removeFile(id) {
+          if (id === original?.id) throw new Error("file cleanup failed");
+          files.delete(id);
+        },
+      },
+    });
+    const replacement = { name: "replacement.pdf", size: 1024, type: "application/pdf" };
+
+    const result = await cleanupFailingNorms.replaceDocument(
+      adminSession.id,
+      "norm-001",
+      replacement,
+    );
+
+    expect(repository.read().norms.find((candidate) => candidate.id === "norm-001").file).toEqual(
+      result.file,
+    );
+    expect(files.get(result.file.id)).toBe(replacement);
+    expect(repository.read().auditEvents).toContainEqual(
+      expect.objectContaining({ action: "norm.document_replaced", targetId: "norm-001" }),
+    );
+  });
 });

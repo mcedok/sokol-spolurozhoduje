@@ -37,6 +37,12 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const firstFieldRef = useRef(null);
+  const returnFocusRef = useRef(null);
+
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement;
+    return () => returnFocusRef.current?.focus?.();
+  }, []);
 
   useEffect(() => {
     firstFieldRef.current?.focus();

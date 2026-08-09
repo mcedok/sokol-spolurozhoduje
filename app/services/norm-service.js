@@ -101,12 +101,13 @@ export function createNormService({ repository, auth, audit, fileRepository, now
     }
   }
 
-  function managingActor(sessionId, norm, requestedAction) {
-    const session = authorizedSession(sessionId, "manage_norm", requestedAction, "norm", norm.id);
+  function managedNorm(sessionId, normId, requestedAction) {
+    const session = authorizedSession(sessionId, "manage_norm", requestedAction, "norm", normId);
+    const norm = findNorm(repository.read(), normId);
     if (!canManageNorm(session.user, norm)) {
       deny(sessionId, "manage_norm", requestedAction, "norm", norm.id);
     }
-    return session.user;
+    return { actor: session.user, norm };
   }
 
   function creatingActor(sessionId) {
@@ -234,8 +235,7 @@ export function createNormService({ repository, auth, audit, fileRepository, now
   }
 
   async function update(sessionId, normId, patch = {}) {
-    const current = findNorm(repository.read(), normId);
-    const actor = managingActor(sessionId, current, "norm.update");
+    const { actor, norm: current } = managedNorm(sessionId, normId, "norm.update");
     const changes = Object.fromEntries(
       Object.entries(patch).filter(([key]) => UPDATE_FIELDS.has(key)),
     );
@@ -251,22 +251,24 @@ export function createNormService({ repository, auth, audit, fileRepository, now
   }
 
   async function remove(sessionId, normId) {
-    const norm = findNorm(repository.read(), normId);
-    const actor = managingActor(sessionId, norm, "norm.remove");
+    const { actor, norm } = managedNorm(sessionId, normId, "norm.remove");
     repository.update((draft) => {
       draft.norms = draft.norms.filter((candidate) => candidate.id !== normId);
       draft.votes = Object.fromEntries(
         Object.entries(draft.votes).filter(([key]) => key.split(":")[2] !== normId),
       );
     });
-    await fileRepository.removeFile(norm.file?.id);
     recordManagement(actor.id, "norm.deleted", normId, { number: norm.number });
+    try {
+      await fileRepository.removeFile(norm.file?.id);
+    } catch {
+      // The repository commit and its audit are authoritative; old file cleanup is best-effort.
+    }
     return { normId, message: "Norma byla smazána." };
   }
 
   async function replaceDocument(sessionId, normId, file) {
-    const norm = findNorm(repository.read(), normId);
-    const actor = managingActor(sessionId, norm, "norm.replace_document");
+    const { actor, norm } = managedNorm(sessionId, normId, "norm.replace_document");
     if (!file || !normalizeText(file.name)) throw new NormServiceError("INVALID_FILE");
     if (file.size > MAX_FILE_SIZE) throw new NormServiceError("FILE_TOO_LARGE");
     const fileId = uniqueId(`file-${normId}`);
@@ -278,14 +280,22 @@ export function createNormService({ repository, auth, audit, fileRepository, now
         findNorm(draft, normId).file = descriptor;
       });
     } catch (error) {
-      await fileRepository.removeFile(fileId);
+      try {
+        await fileRepository.removeFile(fileId);
+      } catch {
+        // Preserve the repository error; removal of an uncommitted file is best-effort.
+      }
       throw error;
     }
-    await fileRepository.removeFile(norm.file?.id);
     recordManagement(actor.id, "norm.document_replaced", normId, {
       oldFileId: norm.file?.id || null,
       newFileId: fileId,
     });
+    try {
+      await fileRepository.removeFile(norm.file?.id);
+    } catch {
+      // The new descriptor and audit are committed; obsolete file cleanup is best-effort.
+    }
     return { file: descriptor, message: "Dokument byl bezpečně uložen pro pilotní test." };
   }
 
@@ -323,8 +333,7 @@ export function createNormService({ repository, auth, audit, fileRepository, now
   }
 
   async function reply(sessionId, normId, submissionId, text) {
-    const norm = findNorm(repository.read(), normId);
-    const actor = managingActor(sessionId, norm, "norm.reply");
+    const { actor, norm } = managedNorm(sessionId, normId, "norm.reply");
     const replyText = normalizeText(text);
     if (!replyText) throw new NormServiceError("INVALID_CONTRIBUTION");
     const reply = {
@@ -381,8 +390,7 @@ export function createNormService({ repository, auth, audit, fileRepository, now
   }
 
   async function resolveSubmission(sessionId, normId, submissionId, resolution) {
-    const norm = findNorm(repository.read(), normId);
-    const actor = managingActor(sessionId, norm, "norm.resolve_submission");
+    const { actor, norm } = managedNorm(sessionId, normId, "norm.resolve_submission");
     const resolutionStatus = normalizeText(resolution?.resolutionStatus);
     if (!resolutionStatus) throw new NormServiceError("INVALID_RESOLUTION");
     const state = repository.update((draft) => {

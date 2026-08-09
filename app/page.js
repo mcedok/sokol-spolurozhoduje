@@ -1,6 +1,6 @@
 "use client";
 import { jsxs, jsx } from "react/jsx-runtime";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { NormAdministration } from "./components/admin/NormAdministration.js";
 import {
   canAccessUserAdministration,
@@ -44,6 +44,8 @@ function Home() {
   const [adminId, setAdminId] = useState(initialNormId);
   const [submissionMode, setSubmissionMode] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
+  const submissionReturnFocusRef = useRef(null);
+  const createReturnFocusRef = useRef(null);
   const selectedNorm = useMemo(
     () => normCatalog.allNorms.find((norm) => norm.id === selectedId) || normCatalog.allNorms[0],
     [normCatalog.allNorms, selectedId]
@@ -69,6 +71,22 @@ function Home() {
     actions.setView("admin");
     scrollToTop();
   }
+  function openContribution(mode) {
+    submissionReturnFocusRef.current = document.activeElement;
+    setSubmissionMode(mode);
+  }
+  function closeContribution() {
+    setSubmissionMode(null);
+    queueMicrotask(() => submissionReturnFocusRef.current?.focus?.());
+  }
+  function openCreate() {
+    createReturnFocusRef.current = document.activeElement;
+    setShowCreate(true);
+  }
+  function closeCreate() {
+    setShowCreate(false);
+    queueMicrotask(() => createReturnFocusRef.current?.focus?.());
+  }
   async function submitContribution(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -78,7 +96,7 @@ function Home() {
       title: String(form.get("title") || "").trim(),
       text: String(form.get("text") || "").trim()
     });
-    if (result) setSubmissionMode(null);
+    if (result) closeContribution();
   }
   async function createNorm(event) {
     event.preventDefault();
@@ -98,7 +116,7 @@ function Home() {
     if (!result) return;
     setAdminId(result.norm.id);
     setSelectedId(result.norm.id);
-    setShowCreate(false);
+    closeCreate();
   }
   async function deleteNorm(norm) {
     const result = await normCatalog.actions.deleteNorm(norm);
@@ -111,12 +129,12 @@ function Home() {
     ...normCatalog.actions,
     onBack: () => actions.setView("landing"),
     manage: openAdmin,
-    openContribution: setSubmissionMode
+    openContribution
   };
   const administrationActions = {
     ...normCatalog.actions,
     selectNorm: setAdminId,
-    openCreate: () => setShowCreate(true),
+    openCreate,
     openPublic: openNorm,
     deleteNorm
   };
@@ -196,14 +214,14 @@ function Home() {
         actions: userAdministration.actions
       }
     ),
-    submissionMode && selectedNorm && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: () => setSubmissionMode(null), children: /* @__PURE__ */ jsxs("form", { className: "modal", onSubmit: submitContribution, onMouseDown: (event) => event.stopPropagation(), children: [
-      /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", onClick: () => setSubmissionMode(null), children: "\xD7" }),
+    submissionMode && selectedNorm && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeContribution, children: /* @__PURE__ */ jsxs("form", { className: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "contribution-dialog-title", onSubmit: submitContribution, onMouseDown: (event) => event.stopPropagation(), children: [
+      /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: closeContribution, children: "\xD7" }),
       /* @__PURE__ */ jsx("p", { className: "kicker", children: selectedNorm.number }),
-      /* @__PURE__ */ jsx("h2", { children: submissionMode === "proposal" ? "Nov\xFD n\xE1vrh zm\u011Bny" : "Nov\xFD koment\xE1\u0159" }),
+      /* @__PURE__ */ jsx("h2", { id: "contribution-dialog-title", children: submissionMode === "proposal" ? "Nov\xFD n\xE1vrh zm\u011Bny" : "Nov\xFD koment\xE1\u0159" }),
       /* @__PURE__ */ jsx("p", { children: "Jm\xE9no a jednota se bezpe\u010Dn\u011B p\u0159evezmou z p\u0159ihl\xE1\u0161en\xE9ho \xFA\u010Dtu." }),
       /* @__PURE__ */ jsxs("label", { children: [
         "\u010C\xE1st dokumentu",
-        /* @__PURE__ */ jsx("input", { name: "section", placeholder: "nap\u0159. \xA7 4 odst. 2" })
+        /* @__PURE__ */ jsx("input", { name: "section", placeholder: "nap\u0159. \xA7 4 odst. 2", autoFocus: true })
       ] }),
       /* @__PURE__ */ jsxs("label", { children: [
         "N\xE1zev",
@@ -214,18 +232,18 @@ function Home() {
         /* @__PURE__ */ jsx("textarea", { name: "text", required: true })
       ] }),
       /* @__PURE__ */ jsxs("div", { className: "modalActions", children: [
-        /* @__PURE__ */ jsx("button", { type: "button", onClick: () => setSubmissionMode(null), children: "Zru\u0161it" }),
+        /* @__PURE__ */ jsx("button", { type: "button", onClick: closeContribution, children: "Zru\u0161it" }),
         /* @__PURE__ */ jsx("button", { className: "primaryButton", children: "Zve\u0159ejnit" })
       ] })
     ] }) }),
-    showCreate && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: () => setShowCreate(false), children: /* @__PURE__ */ jsxs("form", { className: "modal wideModal", onSubmit: createNorm, onMouseDown: (event) => event.stopPropagation(), children: [
-      /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", onClick: () => setShowCreate(false), children: "\xD7" }),
+    showCreate && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeCreate, children: /* @__PURE__ */ jsxs("form", { className: "modal wideModal", role: "dialog", "aria-modal": "true", "aria-labelledby": "create-norm-dialog-title", onSubmit: createNorm, onMouseDown: (event) => event.stopPropagation(), children: [
+      /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: closeCreate, children: "\xD7" }),
       /* @__PURE__ */ jsx("p", { className: "kicker", children: "Nov\xFD materi\xE1l" }),
-      /* @__PURE__ */ jsx("h2", { children: "P\u0159edlo\u017Eit normu" }),
+      /* @__PURE__ */ jsx("h2", { id: "create-norm-dialog-title", children: "P\u0159edlo\u017Eit normu" }),
       /* @__PURE__ */ jsxs("div", { className: "formGrid", children: [
         /* @__PURE__ */ jsxs("label", { className: "wide", children: [
           "N\xE1zev normy",
-          /* @__PURE__ */ jsx("input", { name: "title", required: true })
+          /* @__PURE__ */ jsx("input", { name: "title", required: true, autoFocus: true })
         ] }),
         /* @__PURE__ */ jsxs("label", { children: [
           "Druh dokumentu",
@@ -265,7 +283,7 @@ function Home() {
         ] })
       ] }),
       /* @__PURE__ */ jsxs("div", { className: "modalActions", children: [
-        /* @__PURE__ */ jsx("button", { type: "button", onClick: () => setShowCreate(false), children: "Zru\u0161it" }),
+        /* @__PURE__ */ jsx("button", { type: "button", onClick: closeCreate, children: "Zru\u0161it" }),
         /* @__PURE__ */ jsx("button", { className: "primaryButton", children: "P\u0159edlo\u017Eit normu" })
       ] })
     ] }) }),

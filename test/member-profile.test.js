@@ -184,11 +184,35 @@ describe("page-level role navigation", () => {
     controller.current = pageController(user, "detail");
     render(createElement(Home));
 
-    await browserUser.click(screen.getByRole("button", { name: "Návrh změny" }));
+    const trigger = screen.getByRole("button", { name: "Návrh změny" });
+    await browserUser.click(trigger);
 
-    expect(screen.getByRole("heading", { name: "Nový návrh změny" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "Nový návrh změny" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(within(dialog).getByRole("textbox", { name: "Část dokumentu" })).toHaveFocus();
     expect(screen.getByText("Jméno a jednota se bezpečně převezmou z přihlášeného účtu.")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Autor" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Jednota" })).not.toBeInTheDocument();
+    await browserUser.click(within(dialog).getByRole("button", { name: "Zavřít" }));
+    expect(trigger).toHaveFocus();
+  });
+
+  it("označí dialog nové normy a po zavření vrátí focus na jeho spouštěč", async () => {
+    const browserUser = userEvent.setup();
+    controller.current = pageController(
+      { ...user, id: "admin-1", role: "admin" },
+      "admin",
+    );
+    controller.current.normAdministration.norms = [pageNorm];
+    render(createElement(Home));
+
+    const trigger = screen.getByRole("button", { name: "+ Předložit novou normu" });
+    await browserUser.click(trigger);
+
+    const dialog = screen.getByRole("dialog", { name: "Předložit normu" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(within(dialog).getByRole("textbox", { name: "Název normy" })).toHaveFocus();
+    await browserUser.click(within(dialog).getByRole("button", { name: "Zavřít" }));
+    expect(trigger).toHaveFocus();
   });
 });

@@ -7,5 +7,6 @@ tmp/
 next-env.d.ts
 .env*
 .worktrees/
+.superpowers/
 Fonty Písma/
 *.pdf

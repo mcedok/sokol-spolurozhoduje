@@ -1,4 +1,4 @@
-import { createElement as h, useState } from "react";
+import { createElement as h, useEffect, useRef, useState } from "react";
 import { DemoInbox } from "../auth/DemoInbox.js";
 import { ROLE, USER_STATUS } from "../../domain/constants.js";
 
@@ -284,6 +284,15 @@ function UserDetail({ user, auditEvents, actions }) {
 }
 
 function CreateUserDialog({ onClose, onCreate }) {
+  const firstFieldRef = useRef(null);
+  const returnFocusRef = useRef(null);
+
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement;
+    firstFieldRef.current?.focus();
+    return () => returnFocusRef.current?.focus?.();
+  }, []);
+
   async function submit(event) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -303,11 +312,18 @@ function CreateUserDialog({ onClose, onCreate }) {
     { className: "modalBackdrop", onMouseDown: onClose },
     h(
       "form",
-      { className: "modal", onSubmit: submit, onMouseDown: (event) => event.stopPropagation() },
+      {
+        className: "modal",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-labelledby": "create-user-title",
+        onSubmit: submit,
+        onMouseDown: (event) => event.stopPropagation(),
+      },
       h("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: onClose }, "×"),
       h("p", { className: "kicker" }, "Nový privilegovaný účet"),
-      h("h2", null, "Vytvořit administrátora"),
-      h("label", null, "Jméno", h("input", { name: "firstName", required: true })),
+      h("h2", { id: "create-user-title" }, "Vytvořit administrátora"),
+      h("label", null, "Jméno", h("input", { name: "firstName", required: true, ref: firstFieldRef })),
       h("label", null, "Příjmení", h("input", { name: "lastName", required: true })),
       h("label", null, "E-mail", h("input", { name: "email", type: "email", required: true })),
       h("label", null, "Tělocvičná jednota", h("input", { name: "sokolUnit", required: true })),
