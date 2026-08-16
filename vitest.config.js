@@ -7,5 +7,9 @@ process.env.SOKOL_PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
-  test: { environment: "jsdom", setupFiles: ["./test/setup.js"] },
+  test: {
+    environment: "jsdom",
+    fileParallelism: false,
+    setupFiles: ["./test/setup.js"],
+  },
 });
