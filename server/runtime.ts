@@ -5,12 +5,14 @@ import { createAuthService } from "./modules/identity/auth-service";
 import { createSecretServiceFromEnvironment, type SecretService } from "./modules/identity/secret-service";
 import { createTotpVaultFromEnvironment } from "./modules/identity/totp-vault";
 import { createUserService } from "./modules/identity/user-service";
+import { createDocumentService } from "./modules/documents/document-service";
 
 export interface IdentityRuntime {
   sql: Sql;
   secrets: SecretService;
   auth: ReturnType<typeof createAuthService>;
   users: ReturnType<typeof createUserService>;
+  documents: ReturnType<typeof createDocumentService>;
 }
 
 let identityRuntime: IdentityRuntime | undefined;
@@ -29,6 +31,7 @@ export function getIdentityRuntime(): IdentityRuntime {
       exposeTestSecrets: false,
     }),
     users: createUserService({ sql, secrets }),
+    documents: createDocumentService({ sql }),
   };
   return identityRuntime;
 }
