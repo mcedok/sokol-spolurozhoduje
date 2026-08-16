@@ -66,7 +66,7 @@ Run:
 
 ```powershell
 pnpm add zod
-pnpm add -D typescript @types/node
+pnpm add -D typescript @types/node @types/react @types/react-dom
 ```
 
 Create `tsconfig.json` with strict checking while allowing the existing JavaScript UI:
@@ -75,7 +75,7 @@ Create `tsconfig.json` with strict checking while allowing the existing JavaScri
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "lib": ["DOM", "DOM.Iterable", "ES2024"],
     "allowJs": true,
     "checkJs": false,
     "strict": true,

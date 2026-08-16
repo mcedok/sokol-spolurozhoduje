@@ -9,23 +9,33 @@
     "start": "vinext start",
     "smoke:access": "node scripts/smoke-access.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "test:server": "vitest run test/server",
+    "dev:server": "next dev",
+    "build:server": "next build",
+    "start:server": "next start"
   },
   "dependencies": {
     "next": "16.2.11",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-server-dom-webpack": "19.2.8"
+    "react-server-dom-webpack": "19.2.8",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.22.1",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.4",
     "@vitejs/plugin-rsc": "0.5.27",
-    "vinext": "1.0.0-beta.3",
     "jsdom": "^28.0.0",
+    "typescript": "^7.0.2",
+    "vinext": "1.0.0-beta.3",
     "vite": "^8.1.5",
     "vitest": "^4.0.18",
     "wrangler": "^4.62.0"
