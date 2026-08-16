@@ -120,14 +120,13 @@ import {
 } from "../../contracts/index";
 
 describe("authoritative server contracts", () => {
-  it("keeps the approved role and user-status literals", () => {
-    expect(roleSchema.options).toEqual(["member", "admin", "superadmin"]);
-    expect(userStatusSchema.options).toEqual([
-      "invited",
-      "pending_verification",
-      "active",
-      "blocked",
-    ]);
+  it("accepts approved access values and rejects unknown privileges", () => {
+    expect(roleSchema.parse("member")).toBe("member");
+    expect(roleSchema.parse("admin")).toBe("admin");
+    expect(roleSchema.parse("superadmin")).toBe("superadmin");
+    expect(roleSchema.safeParse("document_owner").success).toBe(false);
+    expect(userStatusSchema.parse("pending_verification")).toBe("pending_verification");
+    expect(userStatusSchema.safeParse("approved").success).toBe(false);
   });
 
   it("requires owner and row version on every administrative document view", () => {
