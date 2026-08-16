@@ -25,12 +25,22 @@ export async function createSession(
     throw new Error("Session lifetime must be a positive integer");
   }
 
+  return withTransaction(sql, async (tx) => createSessionInTransaction(tx, secrets, input));
+}
+
+export async function createSessionInTransaction(
+  tx: Sql,
+  secrets: SecretService,
+  input: CreateSessionInput,
+): Promise<CreatedSession> {
+  if (!Number.isSafeInteger(input.ttlMs) || input.ttlMs <= 0) {
+    throw new Error("Session lifetime must be a positive integer");
+  }
   const sessionId = crypto.randomUUID();
   const token = secrets.newSessionToken();
   const csrfToken = secrets.newCsrfToken();
   const expiresAt = new Date(Date.now() + input.ttlMs);
 
-  await withTransaction(sql, async (tx) => {
     let rotatedFromId: string | null = null;
     if (input.currentSessionId) {
       const [current] = await tx<{ id: string }[]>`
@@ -54,8 +64,6 @@ export async function createSession(
       )
     `;
     await tx`update users set last_login_at = now() where id = ${input.userId}`;
-  });
-
   return { sessionId, token, csrfToken, expiresAt };
 }
 
