@@ -11,6 +11,9 @@ function recipientIdentity(delivery) {
 }
 
 export function DemoInbox({ deliveries = [], onUseCode, onOpenLink }) {
+  if (process.env.NEXT_PUBLIC_DATA_BACKEND !== "browser" || process.env.NODE_ENV === "production") {
+    return null;
+  }
   if (!deliveries.length) return null;
 
   return h(

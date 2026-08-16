@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createBrowserRepository } from "../data/browser-repository.js";
+import { createDataServices } from "../data/create-data-services.js";
+import { createServerApiClient } from "../data/server-api-client.js";
 import * as fileRepository from "../data/file-repository.js";
 import { USER_STATUS } from "../domain/constants.js";
 import { createInitialState } from "../domain/demo-data.js";
@@ -14,7 +16,7 @@ import { createUserService } from "../services/user-service.js";
 
 export const SESSION_STORAGE_KEY = "sokol-spolurozhoduje-session-id";
 
-function createDefaultServices() {
+function createBrowserServices() {
   const repository = createBrowserRepository({ storage: window.localStorage });
   const audit = createAuditService(repository, Date.now);
   const auth = createAuthService({
@@ -25,7 +27,36 @@ function createDefaultServices() {
   });
   const normService = createNormService({ repository, auth, audit, fileRepository, now: Date.now });
   const userService = createUserService({ repository, auth, audit, now: Date.now });
-  return { repository, audit, auth, normService, userService };
+  return {
+    backend: "browser",
+    repository,
+    audit,
+    auth,
+    normService,
+    userService,
+    async bootstrap({ preferredSessionId } = {}) {
+      const legacyState = repository.read();
+      if (legacyState.recoveryRequired) return { legacyState, viewer: null };
+      const sessionId = preferredSessionId === undefined
+        ? window.sessionStorage.getItem(SESSION_STORAGE_KEY)
+        : preferredSessionId;
+      if (!sessionId) return { legacyState, viewer: null };
+      try {
+        return { legacyState, viewer: auth.getSession(sessionId).user, sessionId };
+      } catch {
+        window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+        return { legacyState, viewer: null };
+      }
+    },
+  };
+}
+
+function createDefaultServices() {
+  return createDataServices({
+    env: process.env,
+    browserFactory: createBrowserServices,
+    serverFactory: () => createServerApiClient(),
+  });
 }
 
 export function useAppController({ createServices = createDefaultServices } = {}) {
@@ -44,25 +75,26 @@ export function useAppController({ createServices = createDefaultServices } = {}
   const servicesRef = useRef(null);
   const feedbackTimerRef = useRef(null);
 
-  const refresh = useCallback((preferredSessionId) => {
+  const refresh = useCallback(async (preferredSessionId) => {
     const bundle = servicesRef.current;
     if (!bundle || typeof window === "undefined") return null;
-    const snapshot = bundle.repository.read();
-    setState(snapshot);
-    const sessionId =
-      preferredSessionId === undefined
-        ? window.sessionStorage.getItem(SESSION_STORAGE_KEY)
-        : preferredSessionId;
-    if (!sessionId) {
-      setSession(null);
+    const snapshot = await bundle.bootstrap({ preferredSessionId });
+    if (snapshot.legacyState) {
+      setState(snapshot.legacyState);
+      setSession(snapshot.viewer
+        ? { id: snapshot.sessionId || preferredSessionId, user: snapshot.viewer }
+        : null);
       return snapshot;
     }
-    try {
-      setSession(bundle.auth.getSession(sessionId));
-    } catch {
-      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-      setSession(null);
-    }
+    setState((current) => ({
+      ...current,
+      recoveryRequired: false,
+      norms: snapshot.norms,
+      organizations: snapshot.organizations,
+      users: [],
+      votes: {},
+    }));
+    setSession(snapshot.viewer ? { id: "server-cookie", user: snapshot.viewer } : null);
     return snapshot;
   }, []);
 
@@ -80,7 +112,7 @@ export function useAppController({ createServices = createDefaultServices } = {}
     setServices(null);
     setReady(false);
 
-    const initialSnapshot = bundle.repository.read?.();
+    const initialSnapshot = bundle.backend === "browser" ? bundle.repository.read?.() : null;
     if (initialSnapshot?.recoveryRequired) {
       servicesRef.current = bundle;
       setServices(bundle);
@@ -93,11 +125,12 @@ export function useAppController({ createServices = createDefaultServices } = {}
       };
     }
 
-    void bundle.auth.ensureDemoCredentials().then(() => {
+    void bundle.auth.ensureDemoCredentials().then(async () => {
       if (!active) return;
       servicesRef.current = bundle;
       setServices(bundle);
-      refresh();
+      await refresh();
+      if (!active) return;
       setReady(true);
     }).catch((error) => {
       if (!active) return;
@@ -120,6 +153,10 @@ export function useAppController({ createServices = createDefaultServices } = {}
   const resetDemoData = useCallback(async () => {
     const bundle = servicesRef.current;
     if (!bundle) return false;
+    if (bundle.backend !== "browser") {
+      flash("Produkční data nelze obnovit z prohlížeče.", "error");
+      return false;
+    }
     if (!window.confirm("Obnovení nahradí všechna lokální demo data ukázkovým stavem. Chcete pokračovat?")) {
       return false;
     }
@@ -129,7 +166,7 @@ export function useAppController({ createServices = createDefaultServices } = {}
     setAuthMode(null);
     setAuthDelivery(null);
     setView("landing");
-    refresh(null);
+    await refresh(null);
     flash("Ukázková data byla obnovena.");
     return true;
   }, [flash, refresh]);
@@ -141,23 +178,45 @@ export function useAppController({ createServices = createDefaultServices } = {}
   }, []);
 
   const authenticated = useCallback((nextSession) => {
-    window.sessionStorage.setItem(SESSION_STORAGE_KEY, nextSession.id);
-    refresh(nextSession.id);
-    setAuthMode(null);
-    setAuthDelivery(null);
+    if (servicesRef.current?.backend === "browser") {
+      window.sessionStorage.setItem(SESSION_STORAGE_KEY, nextSession.id);
+      setSession(nextSession);
+      void refresh(nextSession.id);
+      setAuthMode(null);
+      setAuthDelivery(null);
+      return undefined;
+    }
+    return refresh(nextSession.id).then(() => {
+      setAuthMode(null);
+      setAuthDelivery(null);
+    });
   }, [refresh]);
 
   const logout = useCallback(() => {
     const bundle = servicesRef.current;
-    const sessionId = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
-    if (bundle && sessionId) bundle.auth.logout(sessionId);
-    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    refresh(null);
-    setView("landing");
-    setAuthDelivery(null);
-    setSetupDeliveries([]);
-    setSelectedUserId(null);
-    flash("Byli jste odhlášeni.");
+    const sessionId = bundle?.backend === "browser"
+      ? window.sessionStorage.getItem(SESSION_STORAGE_KEY)
+      : "server-cookie";
+    if (bundle?.backend === "browser") {
+      if (sessionId) bundle.auth.logout(sessionId);
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      setSession(null);
+      setView("landing");
+      setAuthDelivery(null);
+      setSetupDeliveries([]);
+      setSelectedUserId(null);
+      flash("Byli jste odhlášeni.");
+      return undefined;
+    }
+    return (async () => {
+      if (bundle && sessionId) await bundle.auth.logout(sessionId);
+      await refresh(null);
+      setView("landing");
+      setAuthDelivery(null);
+      setSetupDeliveries([]);
+      setSelectedUserId(null);
+      flash("Byli jste odhlášeni.");
+    })();
   }, [flash, refresh]);
 
   const mutate = useCallback(async (operation) => {
@@ -168,15 +227,19 @@ export function useAppController({ createServices = createDefaultServices } = {}
     }
     try {
       const result = await operation(bundle);
-      refresh();
+      await refresh();
+      if (bundle.backend === "server" && view === "users" && bundle.userService.loadUsers) {
+        const loadedUsers = await bundle.userService.loadUsers(userFilters);
+        setState((current) => ({ ...current, users: loadedUsers }));
+      }
       if (result?.message) flash(result.message);
       return result;
     } catch (error) {
-      refresh();
+      await refresh();
       flash(error?.message || "Operaci se nepodařilo dokončit.", "error");
       return null;
     }
-  }, [flash, refresh]);
+  }, [flash, refresh, userFilters, view]);
 
   const requireLogin = useCallback((intent) => {
     const messages = {
@@ -338,6 +401,22 @@ export function useAppController({ createServices = createDefaultServices } = {}
   const updateUserFilters = useCallback((patch) => {
     setUserFilters((current) => ({ ...current, ...patch }));
   }, []);
+
+  useEffect(() => {
+    if (
+      view !== "users" || services?.backend !== "server" ||
+      !session?.id || !services.userService.loadUsers
+    ) return undefined;
+    let active = true;
+    void services.userService.loadUsers(userFilters).then((loadedUsers) => {
+      if (active) setState((current) => ({ ...current, users: loadedUsers }));
+    }).catch((error) => {
+      if (active) flash(error?.message || "Uživatele se nepodařilo načíst.", "error");
+    });
+    return () => {
+      active = false;
+    };
+  }, [flash, services, session?.id, userFilters, view]);
 
   const currentUser = session?.user || null;
   const normCatalog = useMemo(() => {

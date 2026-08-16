@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { Algorithm, hash, verify } from "@node-rs/argon2";
+import { hash, verify } from "@node-rs/argon2";
 
 export interface SecretService {
   hashPassword(password: string): Promise<string>;
@@ -42,7 +42,6 @@ export function createSecretService(config: SecretServiceConfig): SecretService 
   return {
     hashPassword(password) {
       return hash(password, {
-        algorithm: Algorithm.Argon2id,
         memoryCost: 65_536,
         timeCost: 3,
         parallelism: 1,

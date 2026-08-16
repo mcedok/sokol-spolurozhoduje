@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 process.env.SOKOL_PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
+process.env.NEXT_PUBLIC_DATA_BACKEND ??= "browser";
 
 export default defineConfig({
   plugins: [react()],

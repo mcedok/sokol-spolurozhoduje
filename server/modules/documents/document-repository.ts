@@ -107,3 +107,16 @@ export async function findVisibleDocument(
   `, [documentId, authenticated]);
   return rows[0] ? publicView(rows[0]) : null;
 }
+
+export async function listManagedDocuments(
+  sql: Sql,
+  actor: { userId: string; role: "admin" | "superadmin" },
+): Promise<DocumentAdminView[]> {
+  const rows = await sql.unsafe<DocumentRow[]>(`
+    select ${COLUMNS}
+    from documents join users owner on owner.id = documents.owner_admin_id
+    where ($1::boolean = true or documents.owner_admin_id = $2)
+    order by documents.created_at desc, documents.id
+  `, [actor.role === "superadmin", actor.userId]);
+  return rows.map(adminView);
+}

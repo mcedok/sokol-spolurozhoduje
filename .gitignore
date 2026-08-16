@@ -5,6 +5,7 @@ dist/
 tmp/
 *.log
 next-env.d.ts
+*.tsbuildinfo
 .env*
 !.env.example
 .worktrees/

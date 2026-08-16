@@ -8,7 +8,8 @@ const INITIAL_STEP = {
   "forgot-password": "forgot-password",
 };
 
-function DemoCredentials() {
+function DemoCredentials({ visible }) {
+  if (!visible) return null;
   return h(
     "aside",
     { className: "demoCredentials", "aria-labelledby": "demo-credentials-title" },
@@ -33,6 +34,7 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
   const [challengeId, setChallengeId] = useState("");
   const [code, setCode] = useState("");
   const [token, setToken] = useState(initialDelivery?.demoToken || "");
+  const [loginAttemptId, setLoginAttemptId] = useState("");
   const [activeDelivery, setActiveDelivery] = useState(initialDelivery || null);
   const [deliveries, setDeliveries] = useState(initialDelivery ? [initialDelivery] : []);
   const [error, setError] = useState("");
@@ -71,12 +73,26 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
     event.preventDefault();
     setError("");
     try {
-      const result = authService.identify(email);
+      const result = await authService.identify(email);
       if (result.kind === "password") return transition("password");
       if (result.kind === "register") return transition("register");
+      if (result.kind === "method-choice") return transition("method-choice");
 
       const delivery = await authService.requestMemberCode(email);
       if (!delivery.challengeId) throw new Error("Přihlášení se nepodařilo. Zkontrolujte stav účtu.");
+      setChallengeId(delivery.challengeId);
+      addDelivery(delivery);
+      transition("member-code");
+    } catch (errorValue) {
+      report(errorValue);
+    }
+  }
+
+  async function requestCodeForEmail() {
+    setError("");
+    try {
+      const delivery = await authService.requestMemberCode(email);
+      if (!delivery.challengeId) throw new Error("Přihlášení se nepodařilo.");
       setChallengeId(delivery.challengeId);
       addDelivery(delivery);
       transition("member-code");
@@ -125,11 +141,32 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
     const data = new FormData(event.currentTarget);
     try {
       const session = await authService.loginWithPassword({ email, password: data.get("password") });
+      if (session.kind === "mfa_required") {
+        setLoginAttemptId(session.loginAttemptId);
+        return transition("admin-mfa");
+      }
       setStep("done");
       onAuthenticated(session);
       onClose();
     } catch (errorValue) {
       reportPasswordLogin(errorValue);
+    }
+  }
+
+  async function verifyAdminMfa(event) {
+    event.preventDefault();
+    setError("");
+    const data = new FormData(event.currentTarget);
+    try {
+      const session = await authService.verifyAdminMfa({
+        loginAttemptId,
+        token: data.get("token"),
+      });
+      setStep("done");
+      onAuthenticated(session);
+      onClose();
+    } catch (errorValue) {
+      report(errorValue);
     }
   }
 
@@ -181,6 +218,15 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
       h(Field, { key: "identify-email", label: "E-mail", name: "email", type: "email", required: true, value: email, onChange: (event) => setEmail(event.target.value), inputRef: firstFieldRef }),
       h("div", { className: "modalActions" }, h("button", { className: "primaryButton" }, "Pokračovat")),
     );
+  } else if (step === "method-choice") {
+    form = h("section", null,
+      h("p", null, "Vyberte způsob přihlášení. Výsledek neprozradí, zda účet existuje."),
+      h("div", { className: "modalActions stackedActions" },
+        h("button", { type: "button", className: "primaryButton", onClick: requestCodeForEmail }, "Poslat kód e-mailem"),
+        h("button", { type: "button", onClick: () => transition("password") }, "Heslo správce"),
+        h("button", { type: "button", onClick: () => transition("register") }, "Nová registrace člena"),
+      ),
+    );
   } else if (step === "register") {
     form = h("form", { onSubmit: register },
       h("p", null, "Vytvořte členský účet a ověřte e-mail jednorázovým kódem."),
@@ -198,7 +244,9 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
     );
   } else if (step === "member-code") {
     form = h("form", { onSubmit: verifyCode },
-      h("p", null, "Zadejte šestimístný kód ze simulované schránky."),
+      h("p", null, authService.backend === "server"
+        ? "Zadejte šestimístný kód doručený na váš e-mail."
+        : "Zadejte šestimístný kód ze simulované schránky."),
       h(Field, { key: "member-code", label: "Ověřovací kód", name: "code", inputMode: "numeric", pattern: "[0-9]{6}", required: true, value: code, onChange: (event) => setCode(event.target.value), inputRef: firstFieldRef }),
       h("div", { className: "modalActions" }, h("button", { className: "primaryButton" }, "Ověřit kód")),
     );
@@ -210,6 +258,12 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
         h("button", { type: "button", className: "linkButton", onClick: () => transition("forgot-password") }, "Zapomenuté heslo"),
         h("button", { className: "primaryButton" }, "Přihlásit"),
       ),
+    );
+  } else if (step === "admin-mfa") {
+    form = h("form", { onSubmit: verifyAdminMfa },
+      h("p", null, "Zadejte šestimístný kód z autentizační aplikace."),
+      h(Field, { key: "admin-mfa", label: "Ověřovací kód", name: "token", inputMode: "numeric", pattern: "[0-9]{6}", required: true, inputRef: firstFieldRef }),
+      h("div", { className: "modalActions" }, h("button", { className: "primaryButton" }, "Dokončit přihlášení")),
     );
   } else if (step === "forgot-password") {
     form = h("form", { onSubmit: requestReset },
@@ -250,14 +304,14 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
       h("p", { className: "kicker" }, "Členský přístup"),
       h("h2", { id: "auth-title" }, step === "register" ? "Registrace" : "Přihlášení"),
       error && h("div", { className: "authError", role: "alert" }, error),
-      h(
+      authService.backend !== "server" && h(
         "p",
         { className: "demoBoundary", role: "note" },
         "Lokální demoverze: data jsou uložena pouze v tomto profilu prohlížeče a nejsou sdílena mezi zařízeními. Nejde o produkčně bezpečné přihlášení.",
       ),
       form,
       h(DemoInbox, { deliveries, onUseCode: useCode, onOpenLink: openLink }),
-      h(DemoCredentials),
+      h(DemoCredentials, { visible: authService.backend !== "server" }),
     ),
   );
 }
