@@ -28,6 +28,25 @@ Hesla správců se v pilotu neukládají čitelně. Kryptografický adaptér pou
 
 ## Doporučená produkční architektura
 
+### Implementovaný serverový základ — etapa A
+
+Aktuální větev už obsahuje standardní Next.js server nad PostgreSQL. Identitu
+určuje serverová `HttpOnly` relace, změnové požadavky vyžadují CSRF token a
+autorizace rolí i vlastnictví probíhá v aplikačních službách nad databází.
+Správci používají heslo hashované Argon2id a TOTP MFA; členové nadále používají
+šestimístný jednorázový e-mailový kód. Mutace zapisují audit a doménový outbox
+transakčně. Veřejný bootstrap neposílá e-mail, členské ID, vlastníka ani interní
+verzi řádku.
+
+Serverový základ je distribuován jako standardní Next standalone Docker image
+spouštěný neprivilegovaným uživatelem. Trasy `/api/health/live` a
+`/api/health/ready` oddělují živost procesu od dostupnosti databáze.
+
+Stávající browserová ukázka zůstává samostatným režimem pro prezentaci. Nesmí se
+považovat za produkční úložiště. Etapa A ještě neimplementuje serverový upload,
+archivaci a převod DOCX, stabilní textové bloky, připomínky ani hlasování; tyto
+funkce jsou následující etapou.
+
 ```text
 Prohlížeč
   |

@@ -18,6 +18,12 @@ Open-source prototyp platformy pro participativní připomínkování a rozhodov
 > [!WARNING]
 > Toto je veřejná browser-local demoverze, nikoli produkčně bezpečný systém. Modelová hesla a kód jsou záměrně zveřejněné, data i odvozené hashe může návštěvník ve svém prohlížeči změnit a simulovaná schránka neposílá skutečný e-mail.
 
+Vedle této ukázky repozitář obsahuje první produkční serverový základ: PostgreSQL,
+bezpečné serverové relace, členské jednorázové kódy, heslo a MFA správců,
+serverové role, vlastnictví dokumentů, audit, transakční outbox a Docker image.
+Nahrávání a převod DOCX, blokové komentování a hlasování zůstávají do další etapy;
+nejsou zatím určeny k ostrému provozu.
+
 ## Modelové účty
 
 | Role | E-mail | Přístupový údaj |
@@ -56,6 +62,8 @@ Pilot ukládá uživatele, výzvy, relace, normy, komentáře, hlasování a aud
 Před ostrým provozem je nutné nahradit klientské úložiště serverovou databází a objektovým úložištěm, přesunout autentizaci i autorizaci na server a doplnit skutečné doručování e-mailů, omezení frekvence pokusů, CSRF/XSS ochranu, centrální audit, antivirovou kontrolu souborů a zálohování.
 
 Podrobnosti jsou v [architektonické dokumentaci](docs/ARCHITECTURE.md).
+Lokální server se spouští podle [serverového návodu](docs/operations/local-server.md)
+a produkční provoz se řídí [runbookem etapy A](docs/operations/phase-a-runbook.md).
 
 ## Licence a značka
 

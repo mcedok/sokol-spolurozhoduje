@@ -1,0 +1,14 @@
+.git
+.github
+.next
+.superpowers
+.worktrees
+dist
+node_modules
+tmp
+*.log
+.env
+.env.*
+!.env.example
+Fonty Písma
+*.pdf

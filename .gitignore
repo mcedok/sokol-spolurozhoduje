@@ -6,6 +6,7 @@ tmp/
 *.log
 next-env.d.ts
 *.tsbuildinfo
+first-admin-token.txt
 .env*
 !.env.example
 .worktrees/

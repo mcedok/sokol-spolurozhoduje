@@ -65,6 +65,14 @@ export function createDocumentService({ sql }: { sql: Sql }) {
       actor, action, targetType: "document", targetId: documentId, correlationId,
       metadata: { reason: error.code },
     }, "denied");
+    await appendAudit(tx, {
+      actor,
+      action: "authorization.denied",
+      targetType: "document",
+      targetId: documentId,
+      correlationId,
+      metadata: { attemptedAction: action, reason: error.code },
+    }, "denied");
     return { error } as const;
   }
 
