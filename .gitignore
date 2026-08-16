@@ -6,6 +6,7 @@ tmp/
 *.log
 next-env.d.ts
 .env*
+!.env.example
 .worktrees/
 .superpowers/
 Fonty Písma/
