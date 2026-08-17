@@ -6,6 +6,8 @@ import { createSecretServiceFromEnvironment, type SecretService } from "./module
 import { createTotpVaultFromEnvironment } from "./modules/identity/totp-vault";
 import { createUserService } from "./modules/identity/user-service";
 import { createDocumentService } from "./modules/documents/document-service";
+import { createAzureBlobStorage } from "./modules/files/azure-blob-storage";
+import { fileConfig } from "./modules/files/file-config";
 
 export interface IdentityRuntime {
   sql: Sql;
@@ -13,6 +15,7 @@ export interface IdentityRuntime {
   auth: ReturnType<typeof createAuthService>;
   users: ReturnType<typeof createUserService>;
   documents: ReturnType<typeof createDocumentService>;
+  files: ReturnType<typeof createAzureBlobStorage>;
 }
 
 let identityRuntime: IdentityRuntime | undefined;
@@ -32,6 +35,7 @@ export function getIdentityRuntime(): IdentityRuntime {
     }),
     users: createUserService({ sql, secrets }),
     documents: createDocumentService({ sql }),
+    files: createAzureBlobStorage(fileConfig()),
   };
   return identityRuntime;
 }
