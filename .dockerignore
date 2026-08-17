@@ -5,6 +5,7 @@
 .worktrees
 dist
 node_modules
+worker/target
 tmp
 *.log
 .env

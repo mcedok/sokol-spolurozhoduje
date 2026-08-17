@@ -43,7 +43,8 @@ services:
   conversion-worker:
     profiles: ["conversion"]
     build:
-      context: ../../worker
+      context: ../..
+      dockerfile: worker/Dockerfile
       target: runtime
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/sokol_test

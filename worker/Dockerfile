@@ -1,11 +1,14 @@
 FROM maven:3.9.11-eclipse-temurin-21 AS build
 WORKDIR /workspace
-COPY pom.xml ./
+COPY worker/pom.xml ./
 RUN mvn -q -DskipTests dependency:go-offline
-COPY src ./src
+COPY worker/src ./src
 RUN mvn -q -DskipTests package
 
 FROM build AS test
+COPY test/fixtures/docx /fixtures
+COPY contracts/schemas /schemas
+ENV SOKOL_FIXTURE_ROOT=/fixtures SOKOL_SCHEMA_ROOT=/schemas
 RUN mvn -q test
 
 FROM eclipse-temurin:21-jre-noble AS runtime
