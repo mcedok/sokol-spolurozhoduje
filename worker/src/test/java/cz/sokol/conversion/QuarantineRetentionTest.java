@@ -99,5 +99,12 @@ class QuarantineRetentionTest {
       exists = false;
       return true;
     }
+
+    @Override
+    public StoredBlob putIfAbsent(
+        String container, String objectKey, java.nio.file.Path source,
+        String expectedSha256, String contentType) {
+      throw new UnsupportedOperationException();
+    }
   }
 }

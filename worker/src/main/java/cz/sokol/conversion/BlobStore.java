@@ -1,6 +1,7 @@
 package cz.sokol.conversion;
 
 import java.io.InputStream;
+import java.nio.file.Path;
 import java.util.Optional;
 
 public interface BlobStore {
@@ -14,6 +15,13 @@ public interface BlobStore {
       String targetContainer,
       String targetKey,
       String expectedSha256) throws Exception;
+
+  StoredBlob putIfAbsent(
+      String container,
+      String objectKey,
+      Path source,
+      String expectedSha256,
+      String contentType) throws Exception;
 
   boolean deleteIfMatch(String container, String objectKey, String etag) throws Exception;
 

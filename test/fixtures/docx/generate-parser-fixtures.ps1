@@ -6,6 +6,7 @@ $utf8 = [Text.UTF8Encoding]::new($false)
 
 function Add-ZipText([IO.Compression.ZipArchive]$Archive, [string]$Name, [string]$Content) {
   $entry = $Archive.CreateEntry($Name, [IO.Compression.CompressionLevel]::Optimal)
+  $entry.LastWriteTime = [DateTimeOffset]::Parse('2026-01-01T00:00:00Z')
   $writer = [IO.StreamWriter]::new($entry.Open(), $utf8)
   $writer.Write($Content)
   $writer.Dispose()
@@ -47,3 +48,15 @@ New-TestDocx 'bookmarks-and-ids.docx' $bookmarks $emptyRels
 $unsafeRels = '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdUnsafe" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="javascript:alert(1)" TargetMode="External"/><Relationship Id="rIdMail" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="mailto:info@sokol.eu" TargetMode="External"/></Relationships>'
 $unsafe = '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:hyperlink r:id="rIdUnsafe"><w:r><w:t>Nebezpečný</w:t></w:r></w:hyperlink><w:r><w:t xml:space="preserve"> a </w:t></w:r><w:hyperlink r:id="rIdMail"><w:r><w:t>e-mail</w:t></w:r></w:hyperlink></w:p></w:body></w:document>'
 New-TestDocx 'unsafe-links.docx' $unsafe $unsafeRels
+
+$simpleTable = '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>B</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
+$mergedCells = 1..4 | ForEach-Object { '<w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr><w:p><w:r><w:t>M</w:t></w:r></w:p></w:tc>' }
+$mergedTable = '<w:tbl><w:tr>' + ($mergedCells -join '') + '</w:tr></w:tbl>'
+$nested = '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>N</w:t></w:r></w:p></w:tc></w:tr></w:tbl>'
+$wideCells = 1..21 | ForEach-Object {
+  if ($_ -eq 1) { '<w:tc><w:p><w:r><w:t>1</w:t></w:r></w:p>' + $nested + $nested + '</w:tc>' }
+  else { '<w:tc><w:p><w:r><w:t>' + $_ + '</w:t></w:r></w:p></w:tc>' }
+}
+$attachmentTable = '<w:tbl><w:tr>' + ($wideCells -join '') + '</w:tr></w:tbl>'
+$complex = '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + $simpleTable + $mergedTable + $attachmentTable + '</w:body></w:document>'
+New-TestDocx 'complex-tables.docx' $complex $emptyRels

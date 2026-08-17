@@ -21,5 +21,8 @@ RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin worker \
 WORKDIR /app
 COPY --from=build /workspace/target/document-conversion-worker-1.0.0-SNAPSHOT.jar /app/worker.jar
 USER 10001:10001
-ENV HOME=/home/worker TMPDIR=/tmp/conversion
+ENV HOME=/home/worker \
+    TMPDIR=/tmp/conversion \
+    XDG_CACHE_HOME=/tmp/conversion/cache \
+    XDG_CONFIG_HOME=/tmp/conversion/config
 ENTRYPOINT ["java", "-jar", "/app/worker.jar"]

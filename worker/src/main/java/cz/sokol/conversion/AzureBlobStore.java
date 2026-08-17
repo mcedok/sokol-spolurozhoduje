@@ -1,16 +1,21 @@
 package cz.sokol.conversion;
 
 import com.azure.core.http.rest.Response;
+import com.azure.core.util.BinaryData;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobServiceClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
 import com.azure.storage.blob.models.BlobRequestConditions;
+import com.azure.storage.blob.models.BlobHttpHeaders;
 import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.models.DeleteSnapshotsOptionType;
 import com.azure.storage.blob.options.BlobBeginCopyOptions;
+import com.azure.storage.blob.options.BlobParallelUploadOptions;
 import com.azure.storage.blob.sas.BlobSasPermission;
 import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -67,6 +72,36 @@ public final class AzureBlobStore implements BlobStore {
     String actualSha256;
     try (InputStream archived = target.openInputStream()) {
       actualSha256 = digest(archived);
+    }
+    return new StoredBlob(target.getProperties().getETag(), actualSha256);
+  }
+
+  @Override
+  public StoredBlob putIfAbsent(
+      String container, String objectKey, Path source, String expectedSha256,
+      String contentType) throws Exception {
+    String sourceSha256;
+    try (InputStream content = Files.newInputStream(source)) {
+      sourceSha256 = digest(content);
+    }
+    if (!expectedSha256.equals(sourceSha256)) {
+      throw new IllegalArgumentException("Hash derivátu neodpovídá jeho obsahu.");
+    }
+    BlobClient target = client(container, objectKey);
+    if (!target.exists()) {
+      var options = new BlobParallelUploadOptions(BinaryData.fromFile(source))
+          .setHeaders(new BlobHttpHeaders().setContentType(contentType))
+          .setMetadata(Map.of("sha256", expectedSha256))
+          .setRequestConditions(new BlobRequestConditions().setIfNoneMatch("*"));
+      try {
+        target.uploadWithResponse(options, Duration.ofMinutes(5), com.azure.core.util.Context.NONE);
+      } catch (BlobStorageException error) {
+        if (error.getStatusCode() != 409 && error.getStatusCode() != 412) throw error;
+      }
+    }
+    String actualSha256;
+    try (InputStream content = target.openInputStream()) {
+      actualSha256 = digest(content);
     }
     return new StoredBlob(target.getProperties().getETag(), actualSha256);
   }

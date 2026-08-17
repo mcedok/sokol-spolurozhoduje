@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.azure.storage.blob.BlobServiceClientBuilder;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.sql.Connection;
 import java.time.Duration;
@@ -14,9 +16,11 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.postgresql.ds.PGSimpleDataSource;
 
 class WorkerEndToEndTest {
+  @TempDir Path temporaryDirectory;
   private static final String STORAGE = System.getenv().getOrDefault(
       "TEST_STORAGE_CONNECTION_STRING",
       "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;"
@@ -83,6 +87,110 @@ class WorkerEndToEndTest {
       cleanup(dataSource, userId, documentId, fileId, versionId, jobId);
       source.deleteIfExists();
       target.deleteIfExists();
+    }
+  }
+
+  @Test
+  void oneLeasedCleanDocxIsPersistedAtomicallyForReview() throws Exception {
+    PGSimpleDataSource dataSource = dataSource();
+    UUID userId = UUID.randomUUID();
+    UUID documentId = UUID.randomUUID();
+    UUID fileId = UUID.randomUUID();
+    UUID versionId = UUID.randomUUID();
+    UUID jobId = UUID.randomUUID();
+    byte[] content = Files.readAllBytes(Path.of(System.getenv().getOrDefault(
+        "SOKOL_FIXTURE_ROOT", "../test/fixtures/docx")).resolve("complex-tables.docx"));
+    String sha256 = HexFormat.of().formatHex(
+        MessageDigest.getInstance("SHA-256").digest(content));
+    String sourceKey = documentId + "/" + versionId + "/" + fileId + ".docx";
+    String originalKey = documentId + "/" + versionId + "/" + sha256 + ".docx";
+    String pdfSha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+        .digest("%PDF-reference".getBytes(StandardCharsets.UTF_8)));
+    String referenceKey = documentId + "/" + versionId + "/reference/" + pdfSha + ".pdf";
+    byte[] tablePng = new byte[] {(byte) 0x89, 0x50, 0x4e, 0x47};
+    String tableSha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+        .digest(tablePng));
+    String tableKey = documentId + "/" + versionId + "/tables/1/" + tableSha + ".png";
+    var service = new BlobServiceClientBuilder().connectionString(STORAGE).buildClient();
+    service.getBlobContainerClient("quarantine").createIfNotExists();
+    service.getBlobContainerClient("originals").createIfNotExists();
+    service.getBlobContainerClient("derivatives").createIfNotExists();
+    var source = service.getBlobContainerClient("quarantine").getBlobClient(sourceKey);
+    var original = service.getBlobContainerClient("originals").getBlobClient(originalKey);
+    var reference = service.getBlobContainerClient("derivatives").getBlobClient(referenceKey);
+    var tableImage = service.getBlobContainerClient("derivatives").getBlobClient(tableKey);
+    source.upload(new ByteArrayInputStream(content), content.length, true);
+    try {
+      seed(dataSource, userId, documentId, fileId, versionId, jobId,
+          sourceKey, source.getProperties().getETag(), sha256, content.length);
+      var leased = new JobLeaseRepository(dataSource, Duration.ofMinutes(2))
+          .leaseNext("clean-e2e-worker", Instant.now());
+      assertEquals(jobId, leased.orElseThrow().id());
+      var processor = new ConversionProcessor(
+          new JdbcConversionRepository(dataSource), new AzureBlobStore(STORAGE),
+          new ClamAvClient(System.getenv().getOrDefault(
+              "TEST_CLAMAV_HOST", "host.docker.internal"), 3310, Duration.ofSeconds(10)));
+      var renderer = new LibreOfficeRenderer(command -> {
+        Files.write(command.workingDirectory().resolve("source.pdf"),
+            "%PDF-reference".getBytes(StandardCharsets.UTF_8));
+        return new LibreOfficeRenderer.ProcessResult(0, false, "converted");
+      });
+
+      ConversionProcessor.TableArtifactGenerator artifacts = (docx, blocks, directory) -> {
+        Files.createDirectories(directory);
+        Path image = Files.write(directory.resolve("table-1.png"), tablePng);
+        return new ConversionProcessor.GeneratedTableArtifacts(
+            java.util.List.of(new ConversionProcessor.GeneratedTableImage(
+                1, image, tableSha, 320, 180)), java.util.Set.of());
+      };
+
+      processor.processLeasedJob(
+          jobId, temporaryDirectory.resolve("jobs"), renderer, artifacts);
+
+      try (Connection connection = dataSource.getConnection(); var statement = connection.prepareStatement("""
+          select job.status, version.status as version_status, document.status as document_status,
+            (select count(*) from block_revisions where document_version_id=version.id) as blocks,
+            (select count(*) from conversion_findings where conversion_job_id=job.id) as findings,
+            (select count(*) from block_assets asset join block_revisions revision
+              on revision.block_revision_id=asset.block_revision_id
+              where revision.document_version_id=version.id) as assets,
+            (select count(*) from file_objects where document_id=document.id
+              and purpose='reference_render') as references,
+            (select count(*) from file_objects where document_id=document.id
+              and purpose='table_image') as table_images,
+            (select count(*) from block_assets asset join block_revisions revision
+              on revision.block_revision_id=asset.block_revision_id
+              where revision.document_version_id=version.id and asset.purpose='table_image'
+                and asset.width=320 and asset.height=180
+                and asset.alternative_text is null) as accessible_image_targets
+          from conversion_jobs job
+          join document_versions version on version.id=job.document_version_id
+          join documents document on document.id=version.document_id where job.id=?
+          """)) {
+        statement.setObject(1, jobId);
+        try (var rows = statement.executeQuery()) {
+          assertTrue(rows.next());
+          assertEquals("completed", rows.getString("status"));
+          assertEquals("conversion_review", rows.getString("version_status"));
+          assertEquals("conversion_review", rows.getString("document_status"));
+          assertEquals(3, rows.getInt("blocks"));
+          assertEquals(1, rows.getInt("findings"));
+          assertEquals(3, rows.getInt("assets"));
+          assertEquals(1, rows.getInt("references"));
+          assertEquals(1, rows.getInt("table_images"));
+          assertEquals(1, rows.getInt("accessible_image_targets"));
+        }
+      }
+      assertTrue(original.exists());
+      assertTrue(reference.exists());
+      assertTrue(tableImage.exists());
+      assertFalse(source.exists());
+    } finally {
+      cleanupConversion(dataSource, userId, documentId, fileId, versionId, jobId);
+      source.deleteIfExists();
+      original.deleteIfExists();
+      reference.deleteIfExists();
+      tableImage.deleteIfExists();
     }
   }
 
@@ -181,5 +289,19 @@ class WorkerEndToEndTest {
       statement.executeUpdate("delete from documents where id='" + documentId + "'");
       statement.executeUpdate("delete from users where id='" + userId + "'");
     }
+  }
+
+  private static void cleanupConversion(
+      PGSimpleDataSource dataSource, UUID userId, UUID documentId, UUID fileId,
+      UUID versionId, UUID jobId) throws Exception {
+    try (Connection connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+      statement.executeUpdate("delete from outbox_events where aggregate_id='" + versionId + "'");
+      statement.executeUpdate("delete from conversion_findings where conversion_job_id='" + jobId + "'");
+      statement.executeUpdate("delete from block_assets where block_revision_id in (select block_revision_id from block_revisions where document_version_id='" + versionId + "')");
+      statement.executeUpdate("delete from block_revisions where document_version_id='" + versionId + "'");
+      statement.executeUpdate("delete from document_blocks where document_id='" + documentId + "'");
+      statement.executeUpdate("delete from file_objects where document_id='" + documentId + "' and purpose in ('reference_render','table_image')");
+    }
+    cleanup(dataSource, userId, documentId, fileId, versionId, jobId);
   }
 }

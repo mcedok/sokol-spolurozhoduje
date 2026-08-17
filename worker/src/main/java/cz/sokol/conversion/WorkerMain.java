@@ -1,5 +1,6 @@
 package cz.sokol.conversion;
 
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -46,7 +47,10 @@ public final class WorkerMain {
         continue;
       }
       try {
-        processor.scanAndArchive(leased.orElseThrow().id());
+        processor.processLeasedJob(
+            leased.orElseThrow().id(),
+            Path.of(System.getenv().getOrDefault("TMPDIR", "/tmp/conversion")),
+            new LibreOfficeRenderer());
       } catch (Exception error) {
         LOGGER.error("Převodní úloha selhala přechodnou chybou.", error);
         leases.recordTransientFailure(leased.orElseThrow().id(), Instant.now(), "TRANSIENT_FAILURE");
