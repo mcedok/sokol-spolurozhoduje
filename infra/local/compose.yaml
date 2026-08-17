@@ -40,6 +40,35 @@ services:
       timeout: 5s
       retries: 30
 
+  conversion-worker:
+    profiles: ["conversion"]
+    build:
+      context: ../../worker
+      target: runtime
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/sokol_test
+      DATABASE_USER: sokol
+      DATABASE_PASSWORD: local-only-password
+      AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+      WORKER_ID: local-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp/conversion:mode=0700,uid=10001,gid=10001
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
 volumes:
   sokol_pg_data:
   sokol_azurite_data:
