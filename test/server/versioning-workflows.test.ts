@@ -5,16 +5,27 @@ import {
   migrateTestDatabase,
   resetTestDatabase,
   seedActiveAdmin,
+  seedActiveMember,
   testSql,
 } from "./db-test-context";
 
 beforeAll(migrateTestDatabase);
-beforeEach(resetTestDatabase);
+beforeEach(resetTestDatabase, 30_000);
 
 async function loadService() {
   const modulePath = "../../server/modules/versioning/versioning-service";
   return import(modulePath) as Promise<{
     createVersioningService(input: { sql: typeof testSql }): {
+      generateMappingsFromPreviousVersion(
+        actor: Actor | null,
+        targetVersionId: string,
+        idempotencyKey: string,
+        correlationId?: string,
+      ): Promise<{
+        id: string;
+        sourceVersionId: string;
+        targetVersionId: string;
+      } | null>;
       generateMappings(
         actor: Actor | null,
         input: {
@@ -85,6 +96,10 @@ async function seedVersionPair() {
     documentId,
     sourceVersionId,
     targetVersionId,
+    sourceBlockUid,
+    targetBlockUid,
+    sourceRevisionId,
+    targetRevisionId,
   };
 }
 
@@ -157,6 +172,27 @@ describe("document version mapping workflows", () => {
     expect(count).toBe(1);
   });
 
+  it("selects the immediately previous ready version automatically", async () => {
+    const seeded = await seedVersionPair();
+    const actor: Actor = {
+      userId: seeded.owner.id,
+      role: "admin",
+      sessionId: crypto.randomUUID(),
+    };
+    const { createVersioningService } = await loadService();
+    const service = createVersioningService({ sql: testSql });
+
+    const run = await service.generateMappingsFromPreviousVersion(
+      actor,
+      seeded.targetVersionId,
+      crypto.randomUUID(),
+    );
+
+    expect(run).toMatchObject({
+      sourceVersionId: seeded.sourceVersionId,
+      targetVersionId: seeded.targetVersionId,
+    });
+  });
   it("reuses the deterministic run when the same version pair arrives with a new key", async () => {
     const seeded = await seedVersionPair();
     const actor: Actor = {
@@ -185,6 +221,46 @@ describe("document version mapping workflows", () => {
       select count(*)::int as count from block_mapping_runs
     `;
     expect(count).toBe(1);
+  });
+
+  it("automatically projects a thread through an unambiguous mapping", async () => {
+    const seeded = await seedVersionPair();
+    const member = await seedActiveMember();
+    const threadId = crypto.randomUUID();
+    await testSql`
+      insert into comment_threads (
+        id, public_id, document_id, block_uid, target_block_revision_id,
+        created_by_user_id
+      ) values (
+        ${threadId}, 'VLAK-2026-000911', ${seeded.documentId},
+        ${seeded.sourceBlockUid}, ${seeded.sourceRevisionId}, ${member.id}
+      )
+    `;
+    const { createVersioningService } = await loadService();
+    const service = createVersioningService({ sql: testSql });
+
+    await service.generateMappings({
+      userId: seeded.owner.id,
+      role: "admin",
+      sessionId: crypto.randomUUID(),
+    }, {
+      sourceVersionId: seeded.sourceVersionId,
+      targetVersionId: seeded.targetVersionId,
+      idempotencyKey: crypto.randomUUID(),
+    });
+
+    const [projection] = await testSql<{
+      target_block_revision_id: string;
+      status: string;
+    }[]>`
+      select target_block_revision_id, status
+      from thread_version_projections
+      where thread_id = ${threadId} and superseded_at is null
+    `;
+    expect(projection).toEqual({
+      target_block_revision_id: seeded.targetRevisionId,
+      status: "auto_projected",
+    });
   });
 
   it("denies a foreign administrator and audits the attempt", async () => {

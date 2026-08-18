@@ -3,6 +3,7 @@ import { BlockStructureEditor } from "./BlockStructureEditor.js";
 import { ConversionFindings } from "./ConversionFindings.js";
 import { ConversionPreview } from "./ConversionPreview.js";
 import { ConversionProgress } from "./ConversionProgress.js";
+import { VersionMappingReview } from "./VersionMappingReview.js";
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
@@ -14,6 +15,7 @@ export function DocumentConversionWizard({ document, api, onReady }) {
   const [activeBlockUid, setActiveBlockUid] = useState(null);
   const [referenceUrl, setReferenceUrl] = useState(null);
   const [error, setError] = useState("");
+  const [mappingAvailable, setMappingAvailable] = useState(false);
 
   const refreshPreview = useCallback(async () => {
     if (!versionId) return null;
@@ -93,6 +95,10 @@ export function DocumentConversionWizard({ document, api, onReady }) {
     try {
       const result = await api.completeConversionReview(preview.id, { rowVersion: preview.rowVersion, idempotencyKey: crypto.randomUUID() });
       setProcessing((current) => ({ ...current, versionStatus: result.status }));
+      const mappings = await api.generateVersionMappings(preview.id, {
+        idempotencyKey: crypto.randomUUID(),
+      });
+      setMappingAvailable(Boolean(mappings));
       await onReady?.();
     } catch (caught) {
       setError(caught.message || "Kontrolu se nepodařilo dokončit.");
@@ -124,5 +130,10 @@ export function DocumentConversionWizard({ document, api, onReady }) {
         h("button", { type: "button", className: "primaryButton", disabled: blockers.length > 0, onClick: complete }, "Potvrdit náhled"),
       ),
     ),
+    mappingAvailable && h(VersionMappingReview, {
+      versionId: preview.id,
+      api,
+      canManage: true,
+    }),
   );
 }

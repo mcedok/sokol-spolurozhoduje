@@ -492,3 +492,16 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { border-color
     animation-duration: .01ms !important;
   }
 }
+
+.versionMappingReview { margin-top: 24px; }
+.mappingList { display: grid; gap: 16px; }
+.mappingItem { border: 1px solid #d8d8d8; border-radius: 10px; padding: 16px; background: #fff; }
+.mappingItemMeta,
+.mappingActions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.mappingComparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.mappingComparison section { background: #f4f4f4; border-radius: 8px; padding: 12px; }
+.mappingDecisionButton { min-width: 44px; min-height: 44px; }
+
+@media (max-width: 700px) {
+  .mappingComparison { grid-template-columns: 1fr; }
+}

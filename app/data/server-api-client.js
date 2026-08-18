@@ -192,6 +192,24 @@ export function createServerApiClient({
   );
   const createFileDownloadLink = (fileId) =>
     request(`/api/file-objects/${fileId}/download-link`);
+  const generateVersionMappings = (versionId, command) => request(
+    `/api/document-versions/${versionId}/mappings`,
+    {
+      method: "POST",
+      idempotencyKey: command.idempotencyKey,
+    },
+  );
+  const getVersionMappings = (versionId) =>
+    request(`/api/document-versions/${versionId}/mappings`);
+  const decideVersionMapping = (mappingId, input) => request(
+    `/api/block-mappings/${mappingId}/decision`,
+    {
+      method: "PUT",
+      body: { decision: input.decision, reason: input.reason },
+      rowVersion: input.rowVersion,
+      idempotencyKey: input.idempotencyKey,
+    },
+  );
 
   const auth = {
     backend: "server",
@@ -390,6 +408,9 @@ export function createServerApiClient({
     decideConversionFinding,
     completeConversionReview,
     createFileDownloadLink,
+    generateVersionMappings,
+    getVersionMappings,
+    decideVersionMapping,
     auth,
     normService,
     userService,

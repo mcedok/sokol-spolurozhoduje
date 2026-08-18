@@ -64,6 +64,19 @@ function apiDouble({ processing, previewValue } = {}) {
     updateBlockStructure: vi.fn().mockResolvedValue({ rowVersion: 5 }),
     decideConversionFinding: vi.fn(),
     completeConversionReview: vi.fn().mockResolvedValue({ status: "ready", rowVersion: 5 }),
+    generateVersionMappings: vi.fn().mockResolvedValue({
+      id: "mapping-run-1",
+      targetVersionId: "version-1",
+      status: "review_required",
+      mappings: [],
+    }),
+    getVersionMappings: vi.fn().mockResolvedValue({
+      id: "mapping-run-1",
+      targetVersionId: "version-1",
+      status: "review_required",
+      mappings: [],
+    }),
+    decideVersionMapping: vi.fn(),
     createFileDownloadLink: vi.fn(),
   };
 }
@@ -192,6 +205,10 @@ describe("DocumentConversionWizard", () => {
       ["PK\u0003\u0004payload"], "návrh.docx", { type: DOCX_MIME },
     ));
     await user.click(await screen.findByRole("button", { name: "Potvrdit náhled" }));
+    await waitFor(() => expect(api.generateVersionMappings).toHaveBeenCalledWith(
+      "version-1",
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    ));
     await waitFor(() => expect(onReady).toHaveBeenCalledWith());
   });
 

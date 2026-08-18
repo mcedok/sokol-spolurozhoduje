@@ -28,11 +28,26 @@ interface MappingRow {
   id: string;
   source_block_revision_id: string | null;
   target_block_revision_id: string | null;
+  source_text: string | null;
+  target_text: string | null;
   relation: BlockMappingRun["mappings"][number]["relation"];
   confidence: string;
   method: BlockMappingRun["mappings"][number]["method"];
   review_status: BlockMappingRun["mappings"][number]["reviewStatus"];
   row_version: number;
+}
+
+export interface MappingDecisionRow {
+  id: string;
+  run_id: string;
+  source_block_revision_id: string | null;
+  target_block_revision_id: string | null;
+  review_status: BlockMappingRun["mappings"][number]["reviewStatus"];
+  row_version: number;
+  document_id: string;
+  owner_admin_id: string;
+  target_version_id: string;
+  run_row_version: number;
 }
 
 export async function findVersionPair(
@@ -51,6 +66,39 @@ export async function findVersionPair(
     join documents document on document.id = source.document_id
     where source.id = ${sourceVersionId} and target.id = ${targetVersionId}
     for update of source, target, document
+  `;
+  return row ?? null;
+}
+
+export async function findPreviousReadyVersion(
+  sql: Sql,
+  targetVersionId: string,
+): Promise<{
+  target_version_id: string;
+  target_status: string;
+  owner_admin_id: string;
+  source_version_id: string | null;
+} | null> {
+  const [row] = await sql<{
+    target_version_id: string;
+    target_status: string;
+    owner_admin_id: string;
+    source_version_id: string | null;
+  }[]>`
+    select target.id as target_version_id, target.status::text as target_status,
+      document.owner_admin_id, previous.id as source_version_id
+    from document_versions target
+    join documents document on document.id = target.document_id
+    left join lateral (
+      select candidate.id
+      from document_versions candidate
+      where candidate.document_id = target.document_id
+        and candidate.version_number < target.version_number
+        and candidate.status = 'ready'
+      order by candidate.version_number desc, candidate.id desc
+      limit 1
+    ) previous on true
+    where target.id = ${targetVersionId}
   `;
   return row ?? null;
 }
@@ -129,10 +177,17 @@ export async function findMappingRun(sql: Sql, runId: string): Promise<BlockMapp
   `;
   if (!run) return null;
   const mappings = await sql<MappingRow[]>`
-    select id, source_block_revision_id, target_block_revision_id,
-      relation, confidence::text, method, review_status, row_version
-    from block_mappings where run_id = ${runId}
-    order by created_at, id
+    select mapping.id, mapping.source_block_revision_id, mapping.target_block_revision_id,
+      source.plain_text as source_text, target.plain_text as target_text,
+      mapping.relation, mapping.confidence::text, mapping.method,
+      mapping.review_status, mapping.row_version
+    from block_mappings mapping
+    left join block_revisions source
+      on source.block_revision_id = mapping.source_block_revision_id
+    left join block_revisions target
+      on target.block_revision_id = mapping.target_block_revision_id
+    where mapping.run_id = ${runId}
+    order by mapping.created_at, mapping.id
   `;
   return {
     id: run.id,
@@ -150,6 +205,8 @@ export async function findMappingRun(sql: Sql, runId: string): Promise<BlockMapp
       targetRevisionIds: mapping.target_block_revision_id
         ? [mapping.target_block_revision_id]
         : [],
+      sourceText: mapping.source_text,
+      targetText: mapping.target_text,
       relation: mapping.relation,
       confidence: Number(mapping.confidence),
       method: mapping.method,
@@ -157,4 +214,37 @@ export async function findMappingRun(sql: Sql, runId: string): Promise<BlockMapp
       rowVersion: mapping.row_version,
     })),
   };
+}
+
+export async function findMappingForDecision(
+  sql: Sql,
+  mappingId: string,
+): Promise<MappingDecisionRow | null> {
+  const [row] = await sql<MappingDecisionRow[]>`
+    select mapping.id, mapping.run_id, mapping.source_block_revision_id,
+      mapping.target_block_revision_id, mapping.review_status, mapping.row_version,
+      run.document_id, document.owner_admin_id, run.target_version_id,
+      run.row_version as run_row_version
+    from block_mappings mapping
+    join block_mapping_runs run on run.id = mapping.run_id
+    join documents document on document.id = run.document_id
+    where mapping.id = ${mappingId}
+    for update of mapping, run, document
+  `;
+  return row ?? null;
+}
+
+export async function findLatestRunForTarget(
+  sql: Sql,
+  targetVersionId: string,
+): Promise<{ id: string; owner_admin_id: string } | null> {
+  const [row] = await sql<{ id: string; owner_admin_id: string }[]>`
+    select run.id, document.owner_admin_id
+    from block_mapping_runs run
+    join documents document on document.id = run.document_id
+    where run.target_version_id = ${targetVersionId}
+    order by run.created_at desc, run.id desc
+    limit 1
+  `;
+  return row ?? null;
 }
