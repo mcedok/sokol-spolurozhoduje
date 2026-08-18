@@ -1,0 +1,433 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { createBrowserRepository } from "../app/data/browser-repository.js";
+import { CHALLENGE_TYPE, LIMITS, ROLE, USER_STATUS } from "../app/domain/constants.js";
+import { createCryptoAdapter } from "../app/security/crypto-adapter.js";
+import { createAuditService } from "../app/services/audit-service.js";
+import { createAuthService } from "../app/services/auth-service.js";
+import { createFakeClock, createMemoryStorage } from "./fakes.js";
+
+const MODEL_CREDENTIALS = {
+  superadmin: { email: "superadmin@sokol.demo", password: "SuperSokol!2026" },
+  admin: { email: "administrator@sokol.demo", password: "AdminSokol!2026" },
+  member: { email: "clen@sokol.demo", code: "260814" },
+};
+
+function createHarness() {
+  const clock = createFakeClock();
+  const repository = createBrowserRepository({ storage: createMemoryStorage() });
+  const baseCryptoAdapter = createCryptoAdapter(globalThis.crypto);
+  const cryptoAdapter = { ...baseCryptoAdapter, randomDigits: () => "123456" };
+  const audit = createAuditService(repository, clock.now);
+  const auth = createAuthService({ repository, audit, cryptoAdapter, now: clock.now });
+  return { auth, audit, clock, repository };
+}
+
+function invitedAdmin() {
+  return {
+    id: "user-admin-invited",
+    firstName: "Anna",
+    lastName: "Novakova",
+    email: "anna.admin@example.cz",
+    sokolUnit: "TJ Sokol Praha",
+    membershipId: "ADMIN-001",
+    role: ROLE.ADMIN,
+    status: USER_STATUS.INVITED,
+  };
+}
+
+function memberProfile(overrides = {}) {
+  return {
+    firstName: "Jan",
+    lastName: "Novak",
+    email: "jan.novak@example.cz",
+    sokolUnit: "TJ Sokol Praha",
+    membershipId: "MEMBER-001",
+    ...overrides,
+  };
+}
+
+describe("auth service", () => {
+  let harness;
+
+  beforeEach(() => {
+    harness = createHarness();
+  });
+
+  it("classifies an email for adaptive login without returning account secrets", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => {
+      state.users.find((user) => user.id === "user-admin-demo").status = USER_STATUS.BLOCKED;
+    });
+
+    expect(auth.identify(MODEL_CREDENTIALS.member.email)).toEqual({ kind: "member" });
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).toEqual({ kind: "password" });
+    expect(auth.identify("neznamy@sokol.demo")).toEqual({ kind: "register" });
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).not.toHaveProperty("status");
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).not.toHaveProperty("passwordHash");
+  });
+
+  it("keeps the documented member demo code usable while issuing random codes to other members", async () => {
+    const { auth } = harness;
+
+    const demoDelivery = await auth.requestMemberCode(MODEL_CREDENTIALS.member.email);
+    expect(demoDelivery.demoCode).toBe(MODEL_CREDENTIALS.member.code);
+    expect(demoDelivery).toMatchObject({
+      userId: "user-member-demo",
+      recipientLabel: "Modelov\u00fd \u010clen",
+      recipientEmail: MODEL_CREDENTIALS.member.email,
+    });
+    await expect(
+      auth.verifyMemberCode({ challengeId: demoDelivery.challengeId, code: MODEL_CREDENTIALS.member.code }),
+    ).resolves.toMatchObject({ userId: "user-member-demo" });
+
+    const delivery = await auth.registerMember(memberProfile({ email: "random-code@example.cz" }));
+    expect(delivery.demoCode).toBe("123456");
+    expect(delivery).toMatchObject({
+      recipientLabel: "Jan Novak",
+      recipientEmail: "random-code@example.cz",
+    });
+  });
+
+  it("does not restore the public administrator credential after the seed account changes role", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => {
+      const seededAdmin = state.users.find((user) => user.id === "user-admin-demo");
+      seededAdmin.role = ROLE.MEMBER;
+      seededAdmin.status = USER_STATUS.ACTIVE;
+      delete seededAdmin.passwordHash;
+      delete seededAdmin.passwordSalt;
+    });
+
+    await auth.ensureDemoCredentials();
+
+    expect(auth.identify(MODEL_CREDENTIALS.admin.email)).toEqual({ kind: "member" });
+    await expect(auth.loginWithPassword(MODEL_CREDENTIALS.admin)).rejects.toMatchObject({
+      code: "INVALID_CREDENTIALS",
+    });
+    const matchingUsers = repository.read().users.filter(
+      (user) => user.email.toLowerCase() === MODEL_CREDENTIALS.admin.email,
+    );
+    expect(matchingUsers).toHaveLength(1);
+    expect(matchingUsers[0]).toMatchObject({ id: "user-admin-demo", role: ROLE.MEMBER });
+    expect(matchingUsers[0]).not.toHaveProperty("demoCredential");
+  });
+
+  it("registers a member and exchanges the one-time code for an eight-hour session", async () => {
+    const { auth, clock, repository } = harness;
+    const delivery = await auth.registerMember(memberProfile({ email: "JAN.NOVAK@example.cz" }));
+
+    expect(delivery.kind).toBe("member_code");
+    await expect(auth.verifyMemberCode({ challengeId: delivery.challengeId, code: "000000" }))
+      .rejects.toMatchObject({ code: "INVALID_CODE" });
+    const session = await auth.verifyMemberCode({
+      challengeId: delivery.challengeId,
+      code: delivery.demoCode,
+    });
+
+    expect(session.expiresAt - clock.now()).toBe(8 * 60 * 60 * 1000);
+    expect(auth.getSession(session.id).user).toMatchObject({
+      email: "jan.novak@example.cz",
+      role: ROLE.MEMBER,
+      status: USER_STATUS.ACTIVE,
+    });
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
+    ).rejects.toMatchObject({ code: "CODE_USED" });
+
+    const persisted = repository.read();
+    expect(persisted.challenges[0]).toMatchObject({
+      type: CHALLENGE_TYPE.MEMBER_CODE,
+      attempts: 1,
+    });
+    expect(JSON.stringify(persisted)).not.toContain(delivery.demoCode);
+  });
+
+  it("preserves all five required member profile fields and rejects blank values", async () => {
+    const { auth, repository } = harness;
+    const delivery = await auth.registerMember({
+      firstName: "  Jana  ",
+      lastName: "  Novakova  ",
+      email: "  JANA.NOVAKOVA@example.cz  ",
+      sokolUnit: "  TJ Sokol Brno  ",
+      membershipId: "  MEMBER-2026-42  ",
+    });
+
+    expect(repository.read().users.find((user) => user.id === delivery.userId)).toMatchObject({
+      firstName: "Jana",
+      lastName: "Novakova",
+      email: "jana.novakova@example.cz",
+      sokolUnit: "TJ Sokol Brno",
+      membershipId: "MEMBER-2026-42",
+    });
+
+    const countAfterValidRegistration = repository.read().users.length;
+    for (const field of ["firstName", "lastName", "email", "sokolUnit", "membershipId"]) {
+      await expect(
+        auth.registerMember(
+          memberProfile({ email: `blank-${field}@example.cz`, [field]: "   " }),
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_PROFILE" });
+    }
+    expect(repository.read().users).toHaveLength(countAfterValidRegistration);
+  });
+
+  it("expires a member code after ten minutes", async () => {
+    const { auth, clock } = harness;
+    const delivery = await auth.registerMember(memberProfile({ email: "member-expiry@example.cz" }));
+    clock.advance(LIMITS.memberCodeMs + 1);
+
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
+    ).rejects.toMatchObject({ code: "CODE_EXPIRED" });
+  });
+
+  it("issues a fresh member code without revealing whether an email exists", async () => {
+    const { auth } = harness;
+    await auth.registerMember(memberProfile({ email: "member-resend@example.cz" }));
+
+    const neutralDelivery = await auth.requestMemberCode("unknown@example.cz");
+    expect(neutralDelivery).toEqual({ kind: "member_code" });
+    const delivery = await auth.requestMemberCode("member-resend@example.cz");
+
+    expect(delivery.kind).toBe(neutralDelivery.kind);
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
+    ).resolves.toMatchObject({ userId: delivery.userId });
+  });
+
+  it("locks a member code on the fifth incorrect attempt", async () => {
+    const { auth } = harness;
+    const delivery = await auth.registerMember(memberProfile({ email: "member-lock@example.cz" }));
+
+    for (let attempt = 1; attempt < LIMITS.maxCodeAttempts; attempt += 1) {
+      await expect(
+        auth.verifyMemberCode({ challengeId: delivery.challengeId, code: "000000" }),
+      ).rejects.toMatchObject({ code: "INVALID_CODE" });
+    }
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: "000000" }),
+    ).rejects.toMatchObject({ code: "CODE_LOCKED" });
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
+    ).rejects.toMatchObject({ code: "CODE_LOCKED" });
+  });
+
+  it("does not reactivate a blocked member and can revoke the member's open challenges", async () => {
+    const { auth, repository } = harness;
+    const delivery = await auth.registerMember(memberProfile({ email: "member-blocked@example.cz" }));
+    repository.update((state) => {
+      state.users.find((user) => user.id === delivery.userId).status = USER_STATUS.BLOCKED;
+    });
+
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_BLOCKED" });
+    expect(repository.read().users.find((user) => user.id === delivery.userId).status).toBe(
+      USER_STATUS.BLOCKED,
+    );
+
+    auth.revokeUserChallenges(delivery.userId);
+    repository.update((state) => {
+      state.users.find((user) => user.id === delivery.userId).status = USER_STATUS.PENDING;
+    });
+    await expect(
+      auth.verifyMemberCode({ challengeId: delivery.challengeId, code: delivery.demoCode }),
+    ).rejects.toMatchObject({ code: "INVALID_CODE" });
+  });
+
+  it("initializes both model passwords once without replacing a changed password", async () => {
+    const { auth, repository } = harness;
+    await auth.ensureDemoCredentials();
+
+    await expect(
+      auth.loginWithPassword(MODEL_CREDENTIALS.superadmin),
+    ).resolves.toMatchObject({ userId: "user-superadmin-demo" });
+    const adminSession = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+    await auth.changePassword({
+      sessionId: adminSession.id,
+      currentPassword: MODEL_CREDENTIALS.admin.password,
+      newPassword: "ChangedSokol!2027",
+    });
+
+    const changedHash = repository.read().users.find((user) => user.id === "user-admin-demo").passwordHash;
+    await auth.ensureDemoCredentials();
+
+    expect(repository.read().users.find((user) => user.id === "user-admin-demo").passwordHash).toBe(changedHash);
+    await expect(auth.loginWithPassword(MODEL_CREDENTIALS.admin)).rejects.toMatchObject({
+      code: "INVALID_CREDENTIALS",
+    });
+    await expect(
+      auth.loginWithPassword({ email: MODEL_CREDENTIALS.admin.email, password: "ChangedSokol!2027" }),
+    ).resolves.toMatchObject({ userId: "user-admin-demo" });
+  });
+
+  it("sets an invited administrator password through a 30-minute one-time link", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => state.users.push(invitedAdmin()));
+    await auth.ensureDemoCredentials();
+    const actor = await auth.loginWithPassword(MODEL_CREDENTIALS.superadmin);
+
+    const delivery = await auth.createPasswordSetup(actor.id, invitedAdmin().id);
+    expect(delivery.kind).toBe("password_setup");
+    await expect(
+      auth.completePasswordSetup({ token: delivery.demoToken, password: "short" }),
+    ).rejects.toMatchObject({ code: "WEAK_PASSWORD" });
+    await auth.completePasswordSetup({ token: delivery.demoToken, password: "InvitedSokol!2026" });
+
+    await expect(
+      auth.loginWithPassword({ email: invitedAdmin().email, password: "InvitedSokol!2026" }),
+    ).resolves.toMatchObject({ userId: invitedAdmin().id });
+    await expect(
+      auth.completePasswordSetup({ token: delivery.demoToken, password: "AnotherSokol!2026" }),
+    ).rejects.toMatchObject({ code: "TOKEN_USED" });
+    const persisted = repository.read();
+    expect(JSON.stringify(persisted)).not.toContain(delivery.demoToken);
+    expect(persisted.users.find((user) => user.id === invitedAdmin().id)).not.toHaveProperty("password");
+  });
+
+  it("does not reactivate a blocked invited administrator with an issued setup token", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => state.users.push(invitedAdmin()));
+    await auth.ensureDemoCredentials();
+    const actor = await auth.loginWithPassword(MODEL_CREDENTIALS.superadmin);
+    const delivery = await auth.createPasswordSetup(actor.id, invitedAdmin().id);
+    repository.update((state) => {
+      state.users.find((user) => user.id === invitedAdmin().id).status = USER_STATUS.BLOCKED;
+    });
+
+    await expect(
+      auth.completePasswordSetup({ token: delivery.demoToken, password: "InvitedSokol!2026" }),
+    ).rejects.toMatchObject({ code: "ACCOUNT_BLOCKED" });
+
+    const state = repository.read();
+    expect(state.users.find((user) => user.id === invitedAdmin().id)).toMatchObject({
+      status: USER_STATUS.BLOCKED,
+    });
+    expect(state.users.find((user) => user.id === invitedAdmin().id)).not.toHaveProperty("passwordHash");
+    expect(state.challenges.find((challenge) => challenge.id === delivery.challengeId).usedAt).toBeNull();
+  });
+
+  it("accepts an exact ten-character password and rejects shorter or incomplete passwords", async () => {
+    const { auth, repository } = harness;
+    repository.update((state) => state.users.push(invitedAdmin()));
+    await auth.ensureDemoCredentials();
+    const actor = await auth.loginWithPassword(MODEL_CREDENTIALS.superadmin);
+    const delivery = await auth.createPasswordSetup(actor.id, invitedAdmin().id);
+
+    for (const password of [
+      "Aa1!aaaaa",
+      "aa1!aaaaaa",
+      "AA1!AAAAAA",
+      "AaA!aaaaaa",
+      "Aa1aaaaaaa",
+    ]) {
+      await expect(
+        auth.completePasswordSetup({ token: delivery.demoToken, password }),
+      ).rejects.toMatchObject({ code: "WEAK_PASSWORD" });
+    }
+
+    await auth.completePasswordSetup({ token: delivery.demoToken, password: "Aa1!aaaaaa" });
+    await expect(
+      auth.loginWithPassword({ email: invitedAdmin().email, password: "Aa1!aaaaaa" }),
+    ).resolves.toMatchObject({ userId: invitedAdmin().id });
+  });
+
+  it("expires password links after thirty minutes", async () => {
+    const { auth, clock, repository } = harness;
+    repository.update((state) => state.users.push(invitedAdmin()));
+    await auth.ensureDemoCredentials();
+    const actor = await auth.loginWithPassword(MODEL_CREDENTIALS.superadmin);
+    const delivery = await auth.createPasswordSetup(actor.id, invitedAdmin().id);
+    clock.advance(LIMITS.passwordLinkMs + 1);
+
+    await expect(
+      auth.completePasswordSetup({ token: delivery.demoToken, password: "InvitedSokol!2026" }),
+    ).rejects.toMatchObject({ code: "TOKEN_EXPIRED" });
+  });
+
+  it("resets a password once, invalidates the old password, and is neutral for an unknown email", async () => {
+    const { auth } = harness;
+    await auth.ensureDemoCredentials();
+
+    const neutralDelivery = await auth.requestPasswordReset("unknown@example.cz");
+    expect(neutralDelivery).toEqual({ kind: "password_reset_requested" });
+    const delivery = await auth.requestPasswordReset(MODEL_CREDENTIALS.admin.email);
+    expect(delivery.kind).toBe(neutralDelivery.kind);
+    await auth.completePasswordReset({ token: delivery.demoToken, password: "ResetSokol!2027" });
+
+    await expect(auth.loginWithPassword(MODEL_CREDENTIALS.admin)).rejects.toMatchObject({
+      code: "INVALID_CREDENTIALS",
+    });
+    await expect(
+      auth.loginWithPassword({ email: MODEL_CREDENTIALS.admin.email, password: "ResetSokol!2027" }),
+    ).resolves.toMatchObject({ userId: "user-admin-demo" });
+    await expect(
+      auth.completePasswordReset({ token: delivery.demoToken, password: "AnotherSokol!2027" }),
+    ).rejects.toMatchObject({ code: "TOKEN_USED" });
+  });
+
+  it("revokes older active reset links when a newer reset is issued and completed", async () => {
+    const { auth, repository } = harness;
+    await auth.ensureDemoCredentials();
+
+    const older = await auth.requestPasswordReset(MODEL_CREDENTIALS.admin.email);
+    const newer = await auth.requestPasswordReset(MODEL_CREDENTIALS.admin.email);
+
+    expect(repository.read().challenges.find((challenge) => challenge.id === older.challengeId))
+      .toMatchObject({ revokedAt: expect.anything() });
+    await auth.completePasswordReset({ token: newer.demoToken, password: "NewerSokol!2028" });
+    await expect(
+      auth.completePasswordReset({ token: older.demoToken, password: "OlderSokol!2028" }),
+    ).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+  });
+
+  it("stores last login time for both password and member-code sessions without auditing bearer ids", async () => {
+    const { auth, clock, repository } = harness;
+    await auth.ensureDemoCredentials();
+
+    const adminSession = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+    const memberDelivery = await auth.requestMemberCode(MODEL_CREDENTIALS.member.email);
+    clock.advance(1_000);
+    await auth.verifyMemberCode({
+      challengeId: memberDelivery.challengeId,
+      code: MODEL_CREDENTIALS.member.code,
+    });
+
+    const state = repository.read();
+    expect(state.users.find((user) => user.id === adminSession.userId).lastLoginAt).toBe(
+      adminSession.createdAt,
+    );
+    expect(state.users.find((user) => user.id === "user-member-demo").lastLoginAt).toBe(clock.now());
+    expect(JSON.stringify(state.auditEvents)).not.toContain(adminSession.id);
+    expect(JSON.stringify(state.auditEvents)).not.toMatch(/sessionId/i);
+  });
+
+  it("rejects expired, logged-out, revoked, and blocked-account sessions", async () => {
+    const { auth, clock, repository } = harness;
+    await auth.ensureDemoCredentials();
+    const expired = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+    clock.advance(LIMITS.sessionMs + 1);
+    expect(() => auth.getSession(expired.id)).toThrow(expect.objectContaining({ code: "SESSION_EXPIRED" }));
+
+    const loggedOut = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+    auth.logout(loggedOut.id);
+    expect(() => auth.getSession(loggedOut.id)).toThrow(expect.objectContaining({ code: "SESSION_REVOKED" }));
+
+    const revoked = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+    auth.revokeUserSessions(revoked.userId);
+    expect(() => auth.getSession(revoked.id)).toThrow(expect.objectContaining({ code: "SESSION_REVOKED" }));
+
+    const blocked = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+    repository.update((state) => {
+      state.users.find((user) => user.id === blocked.userId).status = USER_STATUS.BLOCKED;
+    });
+    expect(() => auth.getSession(blocked.id)).toThrow(expect.objectContaining({ code: "ACCOUNT_BLOCKED" }));
+  });
+
+  it("keeps delivered secrets out of audit metadata", async () => {
+    const { auth, audit } = harness;
+    const delivery = await auth.registerMember(memberProfile({ email: "audit-member@example.cz" }));
+
+    expect(JSON.stringify(audit.listForTarget("user", delivery.userId))).not.toContain(delivery.demoCode);
+  });
+});

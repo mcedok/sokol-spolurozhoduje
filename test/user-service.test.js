@@ -1,0 +1,680 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { createBrowserRepository } from "../app/data/browser-repository.js";
+import { ROLE, USER_STATUS } from "../app/domain/constants.js";
+import { createCryptoAdapter } from "../app/security/crypto-adapter.js";
+import { createAuditService } from "../app/services/audit-service.js";
+import { createAuthService } from "../app/services/auth-service.js";
+import { createUserService } from "../app/services/user-service.js";
+import { createFakeClock, createMemoryStorage } from "./fakes.js";
+
+const MODEL_CREDENTIALS = {
+  superadmin: { email: "superadmin@sokol.demo", password: "SuperSokol!2026" },
+  admin: { email: "administrator@sokol.demo", password: "AdminSokol!2026" },
+};
+
+function memberProfile(overrides = {}) {
+  return {
+    firstName: "Jana",
+    lastName: "Novakova",
+    email: "jana.novakova@example.cz",
+    sokolUnit: "TJ Sokol Brno I",
+    membershipId: "MEMBER-BRNO-42",
+    ...overrides,
+  };
+}
+
+function privilegedProfile(overrides = {}) {
+  return {
+    firstName: "Alena",
+    lastName: "Spravcova",
+    email: "alena.spravcova@example.cz",
+    sokolUnit: "COS",
+    membershipId: "ADMIN-42",
+    role: ROLE.ADMIN,
+    ...overrides,
+  };
+}
+
+async function createHarness({ beforeHash } = {}) {
+  const clock = createFakeClock();
+  const repository = createBrowserRepository({ storage: createMemoryStorage() });
+  const baseCryptoAdapter = createCryptoAdapter(globalThis.crypto);
+  const cryptoAdapter = beforeHash
+    ? {
+      ...baseCryptoAdapter,
+      async hashSecret(secret) {
+        await beforeHash(secret);
+        return baseCryptoAdapter.hashSecret(secret);
+      },
+    }
+    : baseCryptoAdapter;
+  const audit = createAuditService(repository, clock.now);
+  const auth = createAuthService({ repository, audit, cryptoAdapter, now: clock.now });
+  const users = createUserService({ repository, auth, audit, now: clock.now });
+  await auth.ensureDemoCredentials();
+  const superadminSession = await auth.loginWithPassword(MODEL_CREDENTIALS.superadmin);
+  const adminSession = await auth.loginWithPassword(MODEL_CREDENTIALS.admin);
+  return { audit, auth, clock, repository, users, superadminSession, adminSession };
+}
+
+describe("user service", () => {
+  let harness;
+
+  beforeEach(async () => {
+    harness = await createHarness();
+  });
+
+  it("filters users case-insensitively across all profile fields and by exact role and status", async () => {
+    const { repository, superadminSession, users } = harness;
+    repository.update((state) => {
+      state.users.push({
+        id: "member-searchable",
+        ...memberProfile(),
+        role: ROLE.MEMBER,
+        status: USER_STATUS.ACTIVE,
+        emailVerifiedAt: "2026-08-03T10:00:00.000Z",
+        passwordHash: "must-not-leak",
+        passwordSalt: "must-not-leak",
+      });
+    });
+
+    for (const query of ["JANA", "novaKOVA", "EXAMPLE.CZ", "brno i", "member-brno-42"]) {
+      expect(users.listUsers(superadminSession.id, { query })).toEqual([
+        expect.objectContaining({ id: "member-searchable" }),
+      ]);
+    }
+    expect(
+      users.listUsers(superadminSession.id, {
+        role: ROLE.MEMBER,
+        status: USER_STATUS.ACTIVE,
+      }).map((user) => user.id),
+    ).toEqual(["user-member-demo", "member-searchable"]);
+    expect(JSON.stringify(users.getUser(superadminSession.id, "member-searchable"))).not.toContain(
+      "must-not-leak",
+    );
+  });
+
+  it("allows only an active superadministrator to create an invited fixed-role administrator", async () => {
+    const { adminSession, repository, superadminSession, users } = harness;
+
+    await expect(
+      users.createPrivilegedUser(adminSession.id, privilegedProfile()),
+    ).rejects.toMatchObject({ code: "manage_users" });
+    await expect(
+      users.createPrivilegedUser(
+        superadminSession.id,
+        privilegedProfile({ role: ROLE.MEMBER, email: "member-role@example.cz" }),
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_ROLE" });
+
+    const delivery = await users.createPrivilegedUser(
+      superadminSession.id,
+      privilegedProfile({ email: "  ALENA.SPRAVCOVA@EXAMPLE.CZ  " }),
+    );
+
+    expect(delivery).toMatchObject({ kind: "set_password" });
+    expect(repository.read().users.find((user) => user.id === delivery.userId)).toMatchObject({
+      email: "alena.spravcova@example.cz",
+      role: ROLE.ADMIN,
+      status: USER_STATUS.INVITED,
+    });
+  });
+
+  it("audits every denied user-management entry point without session or credential metadata", async () => {
+    const { adminSession, repository, users } = harness;
+
+    expect(() => users.listUsers(adminSession.id)).toThrow(expect.objectContaining({ code: "manage_users" }));
+    expect(() => users.getUser(adminSession.id, "missing-user")).toThrow(
+      expect.objectContaining({ code: "manage_users" }),
+    );
+    await expect(
+      users.createPrivilegedUser(adminSession.id, privilegedProfile()),
+    ).rejects.toMatchObject({ code: "manage_users" });
+    await expect(
+      users.setUserStatus(adminSession.id, "missing-user", USER_STATUS.BLOCKED),
+    ).rejects.toMatchObject({ code: "manage_users" });
+    await expect(
+      users.changeUserRole(adminSession.id, "missing-user", ROLE.MEMBER),
+    ).rejects.toMatchObject({ code: "manage_users" });
+
+    const denied = repository.read().auditEvents.filter(
+      (event) => event.action === "authorization.denied" && event.targetType === "user",
+    );
+    expect(denied.map((event) => event.metadata.requestedAction)).toEqual([
+      "user.list",
+      "user.read",
+      "user.create",
+      "user.status_change",
+      "user.role_change",
+    ]);
+    expect(denied.every((event) => event.actorUserId === adminSession.userId)).toBe(true);
+    expect(JSON.stringify(denied)).not.toMatch(/sessionId|password|token|code/i);
+  });
+
+  it("rejects a duplicate e-mail after normalizing whitespace and letter case", async () => {
+    const { repository, superadminSession, users } = harness;
+    const before = repository.read();
+
+    await expect(
+      users.createPrivilegedUser(
+        superadminSession.id,
+        privilegedProfile({ email: "  SUPERADMIN@SOKOL.DEMO  " }),
+      ),
+    ).rejects.toMatchObject({ code: "EMAIL_EXISTS" });
+
+    const after = repository.read();
+    expect(after.users).toEqual(before.users);
+    expect(after.challenges).toEqual(before.challenges);
+    expect(after.auditEvents).toEqual(before.auditEvents);
+  });
+
+  it("rolls back a newly created administrator when password setup delivery fails", async () => {
+    const { audit, auth, clock, repository, superadminSession } = harness;
+    const users = createUserService({
+      repository,
+      audit,
+      now: clock.now,
+      auth: {
+        ...auth,
+        async createPasswordSetup() {
+          throw new Error("delivery unavailable");
+        },
+      },
+    });
+    const before = repository.read();
+
+    await expect(
+      users.createPrivilegedUser(
+        superadminSession.id,
+        privilegedProfile({ email: "rollback-create@example.cz" }),
+      ),
+    ).rejects.toThrow("delivery unavailable");
+
+    const after = repository.read();
+    expect(after.users).toEqual(before.users);
+    expect(after.challenges).toEqual(before.challenges);
+    expect(after.auditEvents).toEqual(before.auditEvents);
+  });
+
+  it("refuses to block or demote the last active superadministrator without changing state", async () => {
+    const { repository, superadminSession, users } = harness;
+
+    await expect(
+      users.setUserStatus(superadminSession.id, superadminSession.userId, USER_STATUS.BLOCKED),
+    ).rejects.toMatchObject({ code: "LAST_ACTIVE_SUPERADMIN" });
+    await expect(
+      users.changeUserRole(superadminSession.id, superadminSession.userId, ROLE.ADMIN),
+    ).rejects.toMatchObject({ code: "LAST_ACTIVE_SUPERADMIN" });
+
+    expect(repository.read().users.find((user) => user.id === superadminSession.userId)).toMatchObject({
+      role: ROLE.SUPERADMIN,
+      status: USER_STATUS.ACTIVE,
+    });
+    expect(() => harness.auth.getSession(superadminSession.id)).not.toThrow();
+  });
+
+  it("blocks an account and immediately revokes both its sessions and open challenges", async () => {
+    const { adminSession, auth, repository, superadminSession, users } = harness;
+    const resetDelivery = await auth.requestPasswordReset(MODEL_CREDENTIALS.admin.email);
+
+    await users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED);
+
+    const state = repository.read();
+    expect(state.users.find((user) => user.id === adminSession.userId).status).toBe(
+      USER_STATUS.BLOCKED,
+    );
+    expect(state.sessions.find((session) => session.id === adminSession.id).revokedAt).not.toBeNull();
+    expect(
+      state.challenges.find((challenge) => challenge.id === resetDelivery.challengeId).revokedAt,
+    ).not.toBeNull();
+  });
+
+  it("reactivates a blocked invited administrator only through a fresh password setup", async () => {
+    const { auth, repository, superadminSession, users } = harness;
+    const oldDelivery = await users.createPrivilegedUser(
+      superadminSession.id,
+      privilegedProfile({ email: "reactivated-admin@example.cz" }),
+    );
+
+    await users.setUserStatus(superadminSession.id, oldDelivery.userId, USER_STATUS.BLOCKED);
+    await expect(
+      auth.completePasswordSetup({ token: oldDelivery.demoToken, password: "OldSetup!2026" }),
+    ).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+
+    const newDelivery = await users.setUserStatus(
+      superadminSession.id,
+      oldDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+
+    expect(newDelivery).toMatchObject({
+      kind: "set_password",
+      userId: oldDelivery.userId,
+      recipientEmail: "reactivated-admin@example.cz",
+      recipientLabel: "Alena Spravcova",
+      demoToken: expect.any(String),
+    });
+    expect(newDelivery.challengeId).not.toBe(oldDelivery.challengeId);
+    expect(repository.read().users.find((user) => user.id === oldDelivery.userId).status).toBe(
+      USER_STATUS.INVITED,
+    );
+
+    await auth.completePasswordSetup({
+      token: newDelivery.demoToken,
+      password: "FreshSetup!2026",
+    });
+    expect(repository.read().users.find((user) => user.id === oldDelivery.userId)).toMatchObject({
+      status: USER_STATUS.ACTIVE,
+      passwordHash: expect.any(String),
+    });
+  });
+
+  it("coalesces concurrent activation of one blocked passwordless administrator", async () => {
+    let delayHash = false;
+    let releaseHash;
+    let markHashStarted;
+    const hashGate = new Promise((resolve) => {
+      releaseHash = resolve;
+    });
+    const hashStarted = new Promise((resolve) => {
+      markHashStarted = resolve;
+    });
+    const concurrentHarness = await createHarness({
+      beforeHash: async () => {
+        if (delayHash) {
+          markHashStarted();
+          await hashGate;
+        }
+      },
+    });
+    const { adminSession, repository, superadminSession, users } = concurrentHarness;
+    const originalDelivery = await users.createPrivilegedUser(
+      superadminSession.id,
+      privilegedProfile({ email: "concurrent-admin@example.cz" }),
+    );
+    await users.setUserStatus(superadminSession.id, originalDelivery.userId, USER_STATUS.BLOCKED);
+    delayHash = true;
+
+    const firstActivation = users.setUserStatus(
+      superadminSession.id,
+      originalDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+    const secondActivation = users.setUserStatus(
+      superadminSession.id,
+      originalDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+    await hashStarted;
+    await expect(
+      users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED),
+    ).resolves.toMatchObject({ status: USER_STATUS.BLOCKED });
+    releaseHash();
+    const deliveries = await Promise.all([firstActivation, secondActivation]);
+
+    expect(deliveries[0]).toMatchObject({
+      kind: "set_password",
+      userId: originalDelivery.userId,
+    });
+    expect(deliveries[1]).toEqual(deliveries[0]);
+    const state = repository.read();
+    expect(state.users.find((user) => user.id === originalDelivery.userId)).toMatchObject({
+      status: USER_STATUS.INVITED,
+    });
+    expect(state.users.find((user) => user.id === originalDelivery.userId)).not.toHaveProperty(
+      "passwordHash",
+    );
+    expect(
+      state.challenges.filter(
+        (challenge) =>
+          challenge.userId === originalDelivery.userId &&
+          challenge.type === "set_password" &&
+          challenge.revokedAt === null &&
+          challenge.usedAt === null,
+      ),
+    ).toHaveLength(1);
+    const statusTransitions = state.auditEvents
+      .filter(
+        (event) =>
+          event.targetId === originalDelivery.userId && event.action === "user.status_changed",
+      )
+      .map((event) => event.metadata);
+    expect(statusTransitions).toEqual([
+      { oldStatus: USER_STATUS.INVITED, newStatus: USER_STATUS.BLOCKED },
+      { oldStatus: USER_STATUS.BLOCKED, newStatus: USER_STATUS.INVITED },
+    ]);
+  });
+
+  it("preserves the order of conflicting status requests for one user", async () => {
+    const { adminSession, repository, superadminSession, users } = harness;
+
+    await Promise.all([
+      users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED),
+      users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.ACTIVE),
+      users.setUserStatus(superadminSession.id, adminSession.userId, USER_STATUS.BLOCKED),
+    ]);
+
+    expect(repository.read().users.find((user) => user.id === adminSession.userId).status).toBe(
+      USER_STATUS.BLOCKED,
+    );
+    expect(
+      repository.read().auditEvents
+        .filter(
+          (event) => event.targetId === adminSession.userId && event.action === "user.status_changed",
+        )
+        .map((event) => event.metadata),
+    ).toEqual([
+      { oldStatus: USER_STATUS.ACTIVE, newStatus: USER_STATUS.BLOCKED },
+      { oldStatus: USER_STATUS.BLOCKED, newStatus: USER_STATUS.ACTIVE },
+      { oldStatus: USER_STATUS.ACTIVE, newStatus: USER_STATUS.BLOCKED },
+    ]);
+  });
+
+  it("restores blocked members according to their e-mail verification state", async () => {
+    const { auth, repository, superadminSession, users } = harness;
+    const pendingDelivery = await auth.registerMember(
+      memberProfile({ email: "pending-reactivation@example.cz" }),
+    );
+
+    await users.setUserStatus(superadminSession.id, pendingDelivery.userId, USER_STATUS.BLOCKED);
+    const pending = await users.setUserStatus(
+      superadminSession.id,
+      pendingDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+    expect(pending.status).toBe(USER_STATUS.PENDING);
+
+    const verifiedDelivery = await auth.registerMember(
+      memberProfile({ email: "verified-reactivation@example.cz", membershipId: "VERIFIED-7" }),
+    );
+    await auth.verifyMemberCode({
+      challengeId: verifiedDelivery.challengeId,
+      code: verifiedDelivery.demoCode,
+    });
+    await users.setUserStatus(superadminSession.id, verifiedDelivery.userId, USER_STATUS.BLOCKED);
+    const active = await users.setUserStatus(
+      superadminSession.id,
+      verifiedDelivery.userId,
+      USER_STATUS.ACTIVE,
+    );
+
+    expect(active.status).toBe(USER_STATUS.ACTIVE);
+    expect(repository.read().users.find((user) => user.id === pendingDelivery.userId).status).toBe(
+      USER_STATUS.PENDING,
+    );
+  });
+
+  it("requires an active administrator target and transfers every owned norm atomically on demotion", async () => {
+    const { adminSession, repository, superadminSession, users } = harness;
+    repository.update((state) => {
+      state.users.find((user) => user.id === adminSession.userId).passwordUpdatedAt =
+        "2026-08-03T11:00:00.000Z";
+    });
+
+    await expect(
+      users.changeUserRole(superadminSession.id, adminSession.userId, ROLE.MEMBER),
+    ).rejects.toMatchObject({ code: "TRANSFER_REQUIRED" });
+    expect(repository.read().users.find((user) => user.id === adminSession.userId).role).toBe(
+      ROLE.ADMIN,
+    );
+    expect(repository.read().norms.every((norm) => norm.ownerAdminId === adminSession.userId)).toBe(
+      true,
+    );
+
+    repository.update((state) => {
+      state.users.push({
+        id: "inactive-admin",
+        ...privilegedProfile({ email: "inactive@example.cz" }),
+        role: ROLE.ADMIN,
+        status: USER_STATUS.BLOCKED,
+      });
+    });
+    await expect(
+      users.changeUserRole(
+        superadminSession.id,
+        adminSession.userId,
+        ROLE.MEMBER,
+        "inactive-admin",
+      ),
+    ).rejects.toMatchObject({ code: "INVALID_TRANSFER_TARGET" });
+    expect(repository.read().users.find((user) => user.id === adminSession.userId).role).toBe(
+      ROLE.ADMIN,
+    );
+
+    users.changeUserRole(
+      superadminSession.id,
+      adminSession.userId,
+      ROLE.MEMBER,
+      superadminSession.userId,
+    );
+
+    const state = repository.read();
+    expect(state.norms.every((norm) => norm.ownerAdminId === superadminSession.userId)).toBe(true);
+    expect(state.users.find((user) => user.id === adminSession.userId)).toMatchObject({
+      role: ROLE.MEMBER,
+      status: USER_STATUS.ACTIVE,
+      emailVerifiedAt: expect.anything(),
+    });
+    expect(state.users.find((user) => user.id === adminSession.userId)).not.toHaveProperty(
+      "passwordHash",
+    );
+    expect(state.users.find((user) => user.id === adminSession.userId)).not.toHaveProperty(
+      "passwordSalt",
+    );
+    expect(state.users.find((user) => user.id === adminSession.userId)).not.toHaveProperty(
+      "passwordUpdatedAt",
+    );
+    expect(state.sessions.find((session) => session.id === adminSession.id).revokedAt).not.toBeNull();
+  });
+
+  it("promotes a member by revoking old authentication and issuing a fresh password setup", async () => {
+    const { auth, repository, superadminSession, users } = harness;
+    const memberCode = await auth.registerMember(memberProfile());
+    const memberSession = await auth.verifyMemberCode({
+      challengeId: memberCode.challengeId,
+      code: memberCode.demoCode,
+    });
+    const openCode = await auth.requestMemberCode(memberProfile().email);
+
+    const delivery = await users.changeUserRole(
+      superadminSession.id,
+      memberSession.userId,
+      ROLE.ADMIN,
+    );
+
+    expect(delivery).toMatchObject({ kind: "set_password", userId: memberSession.userId });
+    const state = repository.read();
+    expect(state.users.find((user) => user.id === memberSession.userId)).toMatchObject({
+      role: ROLE.ADMIN,
+      status: USER_STATUS.INVITED,
+    });
+    expect(state.sessions.find((session) => session.id === memberSession.id).revokedAt).not.toBeNull();
+    expect(state.challenges.find((challenge) => challenge.id === openCode.challengeId).revokedAt).not.toBeNull();
+    expect(state.challenges.find((challenge) => challenge.id === delivery.challengeId).revokedAt).toBeNull();
+  });
+
+  it("audits member promotion role and status changes as separate events", async () => {
+    const { auth, repository, superadminSession, users } = harness;
+    const memberCode = await auth.registerMember(memberProfile({ email: "audit-promotion@example.cz" }));
+    const memberSession = await auth.verifyMemberCode({
+      challengeId: memberCode.challengeId,
+      code: memberCode.demoCode,
+    });
+
+    await users.changeUserRole(superadminSession.id, memberSession.userId, ROLE.ADMIN);
+
+    const events = repository
+      .read()
+      .auditEvents.filter(
+        (event) =>
+          event.targetId === memberSession.userId &&
+          ["user.role_changed", "user.status_changed"].includes(event.action),
+      )
+      .map(({ action, metadata }) => ({ action, metadata }));
+    expect(events).toHaveLength(2);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        {
+          action: "user.role_changed",
+          metadata: { oldRole: ROLE.MEMBER, newRole: ROLE.ADMIN },
+        },
+        {
+          action: "user.status_changed",
+          metadata: { oldStatus: USER_STATUS.ACTIVE, newStatus: USER_STATUS.INVITED },
+        },
+      ]),
+    );
+  });
+
+  it("audits invited administrator demotion role and status changes as separate events", async () => {
+    const { repository, superadminSession, users } = harness;
+    const invited = await users.createPrivilegedUser(
+      superadminSession.id,
+      privilegedProfile({ email: "audit-demotion@example.cz" }),
+    );
+
+    await users.changeUserRole(superadminSession.id, invited.userId, ROLE.MEMBER);
+
+    const events = repository
+      .read()
+      .auditEvents.filter(
+        (event) =>
+          event.targetId === invited.userId &&
+          ["user.role_changed", "user.status_changed"].includes(event.action),
+      )
+      .map(({ action, metadata }) => ({ action, metadata }));
+    expect(events).toHaveLength(2);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        {
+          action: "user.role_changed",
+          metadata: { oldRole: ROLE.ADMIN, newRole: ROLE.MEMBER },
+        },
+        {
+          action: "user.status_changed",
+          metadata: { oldStatus: USER_STATUS.INVITED, newStatus: USER_STATUS.PENDING },
+        },
+      ]),
+    );
+  });
+
+  it.each([
+    { oldRole: ROLE.ADMIN, newRole: ROLE.SUPERADMIN, email: "invited-admin-up@example.cz" },
+    { oldRole: ROLE.SUPERADMIN, newRole: ROLE.ADMIN, email: "invited-admin-down@example.cz" },
+  ])(
+    "rotates password setup when an invited $oldRole changes to $newRole",
+    async ({ oldRole, newRole, email }) => {
+      const { auth, repository, superadminSession, users } = harness;
+      const oldDelivery = await users.createPrivilegedUser(
+        superadminSession.id,
+        privilegedProfile({ email, role: oldRole }),
+      );
+
+      const newDelivery = await users.changeUserRole(
+        superadminSession.id,
+        oldDelivery.userId,
+        newRole,
+      );
+
+      expect(newDelivery).toMatchObject({ kind: "set_password", userId: oldDelivery.userId });
+      expect(newDelivery.challengeId).not.toBe(oldDelivery.challengeId);
+      await expect(
+        auth.completePasswordSetup({ token: oldDelivery.demoToken, password: "InvitedOld!2026" }),
+      ).rejects.toMatchObject({ code: "INVALID_TOKEN" });
+      await auth.completePasswordSetup({
+        token: newDelivery.demoToken,
+        password: "InvitedNew!2026",
+      });
+      expect(repository.read().users.find((user) => user.id === oldDelivery.userId)).toMatchObject({
+        role: newRole,
+        status: USER_STATUS.ACTIVE,
+      });
+    },
+  );
+
+  it("restores a member and prior authentication when promoted password setup delivery fails", async () => {
+    const { audit, auth, clock, repository, superadminSession } = harness;
+    const memberCode = await auth.registerMember(memberProfile({ email: "rollback-member@example.cz" }));
+    const memberSession = await auth.verifyMemberCode({
+      challengeId: memberCode.challengeId,
+      code: memberCode.demoCode,
+    });
+    await auth.requestMemberCode("rollback-member@example.cz");
+    const before = repository.read();
+    const users = createUserService({
+      repository,
+      audit,
+      now: clock.now,
+      auth: {
+        ...auth,
+        async createPasswordSetup() {
+          throw new Error("delivery unavailable");
+        },
+      },
+    });
+
+    await expect(
+      users.changeUserRole(superadminSession.id, memberSession.userId, ROLE.ADMIN),
+    ).rejects.toThrow("delivery unavailable");
+
+    const after = repository.read();
+    expect(after.users.find((user) => user.id === memberSession.userId)).toEqual(
+      before.users.find((user) => user.id === memberSession.userId),
+    );
+    expect(after.sessions.filter((session) => session.userId === memberSession.userId)).toEqual(
+      before.sessions.filter((session) => session.userId === memberSession.userId),
+    );
+    expect(after.challenges.filter((challenge) => challenge.userId === memberSession.userId)).toEqual(
+      before.challenges.filter((challenge) => challenge.userId === memberSession.userId),
+    );
+    expect(after.auditEvents).toEqual(before.auditEvents);
+  });
+
+  it("audits user changes and ownership transfers with old and new values but no credentials", async () => {
+    const { adminSession, repository, superadminSession, users } = harness;
+    const delivery = await users.createPrivilegedUser(
+      superadminSession.id,
+      privilegedProfile({ email: "audit-admin@example.cz" }),
+    );
+    await users.setUserStatus(superadminSession.id, delivery.userId, USER_STATUS.BLOCKED);
+    users.changeUserRole(
+      superadminSession.id,
+      adminSession.userId,
+      ROLE.MEMBER,
+      superadminSession.userId,
+    );
+
+    const events = repository.read().auditEvents.filter((event) =>
+      ["user.created", "user.status_changed", "user.role_changed", "norm.ownership_transferred"].includes(
+        event.action,
+      ),
+    );
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "user.created",
+          metadata: expect.objectContaining({ oldRole: null, newRole: ROLE.ADMIN }),
+        }),
+        expect.objectContaining({
+          action: "user.status_changed",
+          metadata: expect.objectContaining({
+            oldStatus: USER_STATUS.INVITED,
+            newStatus: USER_STATUS.BLOCKED,
+          }),
+        }),
+        expect.objectContaining({
+          action: "user.role_changed",
+          metadata: expect.objectContaining({ oldRole: ROLE.ADMIN, newRole: ROLE.MEMBER }),
+        }),
+        expect.objectContaining({
+          action: "norm.ownership_transferred",
+          metadata: expect.objectContaining({
+            oldOwnerAdminId: adminSession.userId,
+            newOwnerAdminId: superadminSession.userId,
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(events)).not.toMatch(/password|token|secret/i);
+  });
+});

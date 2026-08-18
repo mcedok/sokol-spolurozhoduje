@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spolurozhoduje.sokol.eu/schemas/conversion-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profileVersion", "sourceSha256", "blocks", "findings"],
+  "properties": {
+    "profileVersion": {"type": "string", "pattern": "^docx-web-v1(?:[.-][A-Za-z0-9]+)*$"},
+    "sourceSha256": {"$ref": "#/$defs/sha256"},
+    "blocks": {"type": "array", "items": {"$ref": "#/$defs/block"}},
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "bold", "italic", "underline", "highlight", "href"],
+      "properties": {
+        "text": {"type": "string"},
+        "bold": {"type": "boolean"},
+        "italic": {"type": "boolean"},
+        "underline": {"type": "boolean"},
+        "highlight": {"type": ["string", "null"]},
+        "href": {"type": ["string", "null"], "pattern": "^(https?://|mailto:).+"}
+      }
+    },
+    "textContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runs"],
+      "properties": {"runs": {"type": "array", "items": {"$ref": "#/$defs/run"}}}
+    },
+    "headingContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "runs"],
+      "properties": {
+        "level": {"type": "integer", "minimum": 1, "maximum": 9},
+        "runs": {"type": "array", "items": {"$ref": "#/$defs/run"}}
+      }
+    },
+    "listContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["listKind", "level", "runs"],
+      "properties": {
+        "listKind": {"enum": ["ordered", "bullet"]},
+        "level": {"type": "integer", "minimum": 0, "maximum": 8},
+        "runs": {"type": "array", "items": {"$ref": "#/$defs/run"}}
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": {"type": "string"},
+        "runs": {"type": "array", "items": {"$ref": "#/$defs/run"}},
+        "rowSpan": {"type": "integer", "minimum": 1},
+        "columnSpan": {"type": "integer", "minimum": 1}
+      }
+    },
+    "tableContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows"],
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {"type": "array", "items": {"$ref": "#/$defs/cell"}}
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sha256", "alternativeText", "width", "height"],
+      "properties": {
+        "kind": {"enum": ["table_image", "reference_page", "attachment"]},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "alternativeText": {"type": ["string", "null"]},
+        "width": {"type": ["integer", "null"], "minimum": 1},
+        "height": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockUid", "type", "plainText", "normalizedHash", "commentable", "headingPath", "sourceBookmark", "sourceParaId", "content", "assets"],
+      "properties": {
+        "blockUid": {"type": "string", "format": "uuid"},
+        "type": {"enum": ["heading", "paragraph", "list_item", "table", "table_image", "attachment_reference", "quote", "callout", "technical_separator"]},
+        "plainText": {"type": "string"},
+        "normalizedHash": {"$ref": "#/$defs/sha256"},
+        "commentable": {"type": "boolean"},
+        "headingPath": {"type": "array", "items": {"type": "string"}},
+        "sourceBookmark": {"type": ["string", "null"]},
+        "sourceParaId": {"type": ["string", "null"]},
+        "content": {"oneOf": [
+          {"$ref": "#/$defs/textContent"},
+          {"$ref": "#/$defs/headingContent"},
+          {"$ref": "#/$defs/listContent"},
+          {"$ref": "#/$defs/tableContent"},
+          {"type": "object", "maxProperties": 0}
+        ]},
+        "assets": {"type": "array", "items": {"$ref": "#/$defs/asset"}}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message", "sourceLocation"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"},
+        "severity": {"enum": ["info", "warning", "blocking"]},
+        "message": {"type": "string", "minLength": 1},
+        "sourceLocation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "blockIndex": {"type": "integer", "minimum": 0},
+            "relationshipId": {"type": "string"}
+          }
+        }
+      }
+    }
+  }
+}

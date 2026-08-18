@@ -1,766 +1,325 @@
 "use client";
-
-import { useEffect, useMemo, useState } from "react";
-
-const STORAGE_KEY = "sokol-spolurozhoduje-pilot-v2";
-const DB_NAME = "sokol-spolurozhoduje-files";
-const STORE_NAME = "documents";
-
+import { jsxs, jsx } from "react/jsx-runtime";
+import { useMemo, useRef, useState } from "react";
+import { NormAdministration } from "./components/admin/NormAdministration.js";
+import {
+  canAccessUserAdministration,
+  UserAdministration
+} from "./components/admin/UserAdministration.js";
+import { AuthDialog } from "./components/auth/AuthDialog.js";
+import { UserMenu } from "./components/auth/UserMenu.js";
+import { MemberProfile } from "./components/member/MemberProfile.js";
+import { LandingPage } from "./components/public/LandingPage.js";
+import { NormDetail } from "./components/public/NormDetail.js";
+import { Feedback } from "./components/shared/Feedback.js";
+import { createInitialState } from "./domain/demo-data.js";
+import { useDialogFocusTrap } from "./hooks/use-dialog-focus-trap.js";
+import { useAppController } from "./hooks/use-app-controller.js";
+import { canCreateNorm } from "./security/access-control.js";
 const STATUS_OPTIONS = [
   "Koncept",
-  "K připomínkování",
-  "Vypořádání",
-  "Ke schválení",
-  "Schváleno",
-  "Neschváleno",
-  "Archivováno",
+  "K p\u0159ipom\xEDnkov\xE1n\xED",
+  "Vypo\u0159\xE1d\xE1n\xED",
+  "Ke schv\xE1len\xED",
+  "Schv\xE1leno",
+  "Neschv\xE1leno",
+  "Archivov\xE1no"
 ];
-
-const statusClass = {
-  Koncept: "neutral",
-  "K připomínkování": "open",
-  Vypořádání: "review",
-  "Ke schválení": "review",
-  Schváleno: "approved",
-  Neschváleno: "rejected",
-  Archivováno: "neutral",
-};
-
-const initialNorms = [
-  {
-    id: "norm-001",
-    number: "SOKOL-2026-001",
-    title: "Členský a organizační řád",
-    category: "Vnitřní předpis",
-    version: "2.1",
-    status: "K připomínkování",
-    commentsOpen: true,
-    publishedAt: "2026-06-12",
-    deadline: "2026-08-15",
-    submittedBy: "Předsednictvo České obce sokolské",
-    responsible: "Odbor organizace ČOS",
-    summary:
-      "Návrh sjednocuje členská práva, digitální účast a pravidla rozhodování v tělocvičných jednotách.",
-    reason:
-      "Dosavadní úprava nepočítá s běžným využíváním elektronických nástrojů a vzdálenou účastí. Navrhované změny zpřesňují práva členů, lhůty pro vyřízení podnětů a způsob zveřejňování rozhodnutí. Cílem je srozumitelnější a jednotný postup napříč župami a tělocvičnými jednotami.",
-    file: null,
-    needVotes: { yes: 72, no: 28 },
-    sections: [
-      {
-        id: "rights",
-        label: "§ 4",
-        title: "Práva člena",
-        paragraphs: [
-          "Člen Sokola má právo účastnit se činnosti jednoty, být informován o jejím hospodaření a podílet se na rozhodování v rozsahu stanoveném tímto řádem.",
-          "Člen může předkládat návrhy a podněty orgánům jednoty. Orgán, kterému byl podnět doručen, jej projedná a o výsledku člena vyrozumí.",
-          "Člen má právo nahlížet do zápisů z jednání orgánů jednoty, pokud tím nejsou dotčena práva třetích osob nebo povinnost mlčenlivosti.",
-        ],
-      },
-      {
-        id: "bodies",
-        label: "§ 9",
-        title: "Orgány jednoty",
-        paragraphs: [
-          "Orgány jednoty rozhodují transparentně a zveřejňují přijatá usnesení způsobem dostupným členům.",
-          "Jednání orgánu může proběhnout prezenčně, distančně nebo kombinovanou formou.",
-        ],
-      },
-    ],
-    submissions: [
-      {
-        id: "sub-1",
-        kind: "Návrh úpravy",
-        section: "§ 4 odst. 2",
-        title: "Doplnit možnost vzdálené účasti",
-        text: "Doplnit právo účastnit se schůze prostřednictvím prostředků komunikace na dálku.",
-        author: "Jana K.",
-        unit: "TJ Sokol Brno I",
-        createdAt: "2026-06-18",
-        score: 28,
-        resolutionStatus: "Nevypořádáno",
-        resolution: "",
-        adminComment: "",
-        replies: [
-          {
-            id: "reply-1",
-            author: "Petr N.",
-            text: "Podporuji, zejména pro členy mimo místo jednoty.",
-          },
-        ],
-      },
-      {
-        id: "sub-2",
-        kind: "Návrh úpravy",
-        section: "§ 4 odst. 2",
-        title: "Stanovit lhůtu 30 dnů",
-        text: "Navrhuji nahradit neurčitou formulaci konkrétní lhůtou 30 kalendářních dnů.",
-        author: "Petr N.",
-        unit: "Sokol Praha Vršovice",
-        createdAt: "2026-06-20",
-        score: 17,
-        resolutionStatus: "Zapracováno",
-        resolution: "Přijato do pracovní verze 2.2; lhůta byla doplněna.",
-        adminComment: "Děkujeme za přesný a proveditelný návrh.",
-        replies: [],
-      },
-      {
-        id: "sub-3",
-        kind: "Komentář",
-        section: "§ 4 odst. 1",
-        title: "Věková hranice členského práva",
-        text: "Platí toto právo ve stejném rozsahu také pro členy mladší 18 let?",
-        author: "Marek S.",
-        unit: "TJ Sokol Liberec",
-        createdAt: "2026-06-22",
-        score: 6,
-        resolutionStatus: "Nezapracováno",
-        resolution:
-          "Rozsah práv nezletilých členů upravují stanovy; do tohoto řádu bude doplněn odkaz.",
-        adminComment: "",
-        replies: [],
-      },
-    ],
-  },
-  {
-    id: "norm-002",
-    number: "SOKOL-2026-002",
-    title: "Pravidla pro elektronické hlasování",
-    category: "Metodický pokyn",
-    version: "1.0",
-    status: "Vypořádání",
-    commentsOpen: false,
-    publishedAt: "2026-05-04",
-    deadline: "2026-06-30",
-    submittedBy: "Výbor České obce sokolské",
-    responsible: "Kancelář ČOS",
-    summary:
-      "Procesní pravidla pro ověření člena, bezpečné hlasování a zveřejnění výsledků.",
-    reason:
-      "Elektronické hlasování je používáno rozdílně a bez jednotných minimálních pravidel. Materiál stanovuje požadavky na identifikaci hlasujícího, auditní stopu, ochranu osobních údajů a řešení technických incidentů.",
-    file: null,
-    needVotes: { yes: 89, no: 11 },
-    sections: [
-      {
-        id: "security",
-        label: "Čl. 3",
-        title: "Ověření a bezpečnost",
-        paragraphs: [
-          "Každý hlasující člen musí být před hlasováním jednoznačně ověřen.",
-          "Systém uchovává auditní záznam bez zveřejnění obsahu tajného hlasování.",
-        ],
-      },
-    ],
-    submissions: [
-      {
-        id: "sub-4",
-        kind: "Komentář",
-        section: "Čl. 3 odst. 2",
-        title: "Doba uchování auditního záznamu",
-        text: "Doporučuji uvést konkrétní skartační lhůtu.",
-        author: "Eva T.",
-        unit: "Sokol Plzeň",
-        createdAt: "2026-05-21",
-        score: 13,
-        resolutionStatus: "Zapracováno",
-        resolution: "Doplněna lhůta 5 let od ukončení hlasování.",
-        adminComment: "",
-        replies: [],
-      },
-    ],
-  },
-  {
-    id: "norm-003",
-    number: "SOKOL-2026-003",
-    title: "Zásady péče o sokolský majetek",
-    category: "Směrnice",
-    version: "0.8",
-    status: "Koncept",
-    commentsOpen: false,
-    publishedAt: "",
-    deadline: "",
-    submittedBy: "Ekonomická komise ČOS",
-    responsible: "Majetkový odbor ČOS",
-    summary:
-      "Připravovaná pravidla evidence, údržby a odpovědnosti za společný majetek.",
-    reason:
-      "Materiál reaguje na rozdílnou praxi při evidenci a plánování oprav sokolského majetku.",
-    file: null,
-    needVotes: { yes: 0, no: 0 },
-    sections: [
-      {
-        id: "evidence",
-        label: "Čl. 2",
-        title: "Evidence majetku",
-        paragraphs: [
-          "Jednota vede průběžnou evidenci nemovitého a významného movitého majetku.",
-        ],
-      },
-    ],
-    submissions: [],
-  },
-];
-
-function dateLabel(value) {
-  if (!value) return "neuvedeno";
-  return new Intl.DateTimeFormat("cs-CZ", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date(`${value}T12:00:00`));
-}
-
-function openFilesDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function storeFile(id, file) {
-  const db = await openFilesDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).put(file, id);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  db.close();
-}
-
-async function readFile(id) {
-  const db = await openFilesDb();
-  const file = await new Promise((resolve, reject) => {
-    const request = db.transaction(STORE_NAME).objectStore(STORE_NAME).get(id);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
-  return file;
-}
-
-async function removeFile(id) {
-  if (!id) return;
-  const db = await openFilesDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, "readwrite");
-    transaction.objectStore(STORE_NAME).delete(id);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  db.close();
-}
-
-function StatusBadge({ value }) {
-  return <span className={`statusBadge ${statusClass[value] || "neutral"}`}>{value}</span>;
-}
-
-function EmptyState({ children }) {
-  return <div className="emptyState">{children}</div>;
-}
-
-export default function Home() {
-  const [norms, setNorms] = useState(initialNorms);
-  const [hydrated, setHydrated] = useState(false);
-  const [view, setView] = useState("landing");
-  const [selectedId, setSelectedId] = useState(initialNorms[0].id);
-  const [adminId, setAdminId] = useState(initialNorms[0].id);
-  const [filter, setFilter] = useState("Aktivní");
+const initialNormId = createInitialState().norms[0]?.id || "";
+function Home() {
+  const controller = useAppController();
+  const {
+    state,
+    session,
+    currentUser,
+    view,
+    actions,
+    feedback,
+    authMode,
+    authDelivery,
+    services,
+    normCatalog,
+    normAdministration,
+    memberProfile,
+    userAdministration
+  } = controller;
+  const [selectedId, setSelectedId] = useState(initialNormId);
+  const [adminId, setAdminId] = useState(initialNormId);
   const [submissionMode, setSubmissionMode] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [toast, setToast] = useState("");
-  const [votes, setVotes] = useState({});
-  const [needVote, setNeedVote] = useState(null);
-
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) setNorms(JSON.parse(saved));
-    } catch {
-      // Pilot remains usable with the bundled demo data.
-    }
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (hydrated) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(norms));
-  }, [hydrated, norms]);
-
+  const submissionReturnFocusRef = useRef(null);
+  const createReturnFocusRef = useRef(null);
   const selectedNorm = useMemo(
-    () => norms.find((norm) => norm.id === selectedId) || norms[0],
-    [norms, selectedId],
+    () => normCatalog.allNorms.find((norm) => norm.id === selectedId) || normCatalog.allNorms[0],
+    [normCatalog.allNorms, selectedId]
   );
   const adminNorm = useMemo(
-    () => norms.find((norm) => norm.id === adminId) || norms[0],
-    [norms, adminId],
+    () => normAdministration.norms.find((norm) => norm.id === adminId) || normAdministration.norms[0],
+    [adminId, normAdministration.norms]
   );
-  const filteredNorms = useMemo(() => {
-    if (filter === "Všechny") return norms;
-    if (filter === "Uzavřené") {
-      return norms.filter((norm) =>
-        ["Schváleno", "Neschváleno", "Archivováno"].includes(norm.status),
-      );
-    }
-    return norms.filter((norm) =>
-      ["K připomínkování", "Vypořádání", "Ke schválení"].includes(norm.status),
-    );
-  }, [filter, norms]);
-
-  function flash(message) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 2600);
+  function scrollToTop() {
+    window.scrollTo?.({ top: 0, behavior: "smooth" });
   }
-
-  function updateNorm(id, patch) {
-    setNorms((items) =>
-      items.map((norm) =>
-        norm.id === id
-          ? { ...norm, ...(typeof patch === "function" ? patch(norm) : patch) }
-          : norm,
-      ),
-    );
-  }
-
   function openNorm(id) {
-    setSelectedId(id);
-    setView("detail");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (id) setSelectedId(id);
+    actions.setView("detail");
+    scrollToTop();
   }
-
   function openAdmin(id = adminId) {
+    if (!session?.id || !canCreateNorm(currentUser)) {
+      normCatalog.actions.requireLogin("administration");
+      return;
+    }
     if (id) setAdminId(id);
-    setView("admin");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    actions.setView("admin");
+    scrollToTop();
   }
-
-  function castVote(normId, submissionId, direction) {
-    const voteKey = `${normId}:${submissionId}`;
-    const previous = votes[voteKey] || 0;
-    updateNorm(normId, (norm) => ({
-      submissions: norm.submissions.map((item) =>
-        item.id === submissionId
-          ? { ...item, score: item.score - previous + direction }
-          : item,
-      ),
-    }));
-    setVotes((current) => ({ ...current, [voteKey]: direction }));
+  function openContribution(mode) {
+    submissionReturnFocusRef.current = document.activeElement;
+    setSubmissionMode(mode);
   }
-
-  async function downloadDocument(norm) {
-    if (!norm.file?.id) {
-      flash("K této normě zatím nebyl nahrán soubor.");
-      return;
-    }
-    try {
-      const file = await readFile(norm.file.id);
-      if (!file) throw new Error("Soubor nebyl nalezen");
-      const url = URL.createObjectURL(file);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = norm.file.name;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      flash("Soubor je uložen v jiném prohlížeči nebo byl odstraněn.");
-    }
+  function closeContribution() {
+    setSubmissionMode(null);
   }
-
-  async function replaceDocument(norm, file) {
-    if (!file) return;
-    if (file.size > 15 * 1024 * 1024) {
-      flash("Soubor může mít nejvýše 15 MB.");
-      return;
-    }
-    const fileId = `file-${norm.id}-${Date.now()}`;
-    try {
-      await storeFile(fileId, file);
-      await removeFile(norm.file?.id);
-      updateNorm(norm.id, {
-        file: { id: fileId, name: file.name, size: file.size, type: file.type },
-      });
-      flash("Dokument byl bezpečně uložen pro pilotní test.");
-    } catch {
-      flash("Soubor se nepodařilo uložit v tomto prohlížeči.");
-    }
+  function openCreate() {
+    createReturnFocusRef.current = document.activeElement;
+    setShowCreate(true);
   }
-
+  function closeCreate() {
+    setShowCreate(false);
+  }
+  const contributionDialogRef = useDialogFocusTrap({ active: Boolean(submissionMode), onClose: closeContribution, returnFocusRef: submissionReturnFocusRef });
+  const createDialogRef = useDialogFocusTrap({ active: showCreate, onClose: closeCreate, returnFocusRef: createReturnFocusRef });
+  async function submitContribution(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const result = await normCatalog.actions.addContribution(selectedNorm.id, {
+      kind: submissionMode === "proposal" ? "N\xE1vrh \xFApravy" : "Koment\xE1\u0159",
+      section: String(form.get("section") || "").trim() || "Obecn\u011B",
+      title: String(form.get("title") || "").trim(),
+      text: String(form.get("text") || "").trim()
+    });
+    if (result) closeContribution();
+  }
+  async function createNorm(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const file = form.get("file");
+    const result = await normCatalog.actions.createNorm({
+      title: String(form.get("title") || "").trim(),
+      category: String(form.get("category") || "").trim(),
+      version: String(form.get("version") || "").trim(),
+      status: String(form.get("status") || ""),
+      deadline: String(form.get("deadline") || ""),
+      submittedBy: String(form.get("submittedBy") || "").trim(),
+      responsible: String(form.get("responsible") || "").trim(),
+      summary: String(form.get("summary") || "").trim(),
+      reason: String(form.get("reason") || "").trim()
+    }, file instanceof File && file.size > 0 ? file : void 0);
+    if (!result) return;
+    setAdminId(result.norm.id);
+    setSelectedId(result.norm.id);
+    closeCreate();
+  }
   async function deleteNorm(norm) {
-    if (!window.confirm(`Opravdu smazat normu ${norm.number} – ${norm.title}?`)) return;
-    await removeFile(norm.file?.id);
-    setNorms((items) => items.filter((item) => item.id !== norm.id));
-    const fallback = norms.find((item) => item.id !== norm.id);
+    const result = await normCatalog.actions.deleteNorm(norm);
+    if (!result) return;
+    const fallback = normAdministration.norms.find((candidate) => candidate.id !== norm.id);
     setAdminId(fallback?.id || "");
     setSelectedId(fallback?.id || "");
-    flash("Norma byla smazána.");
   }
-
-  function createNorm(event) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const year = new Date().getFullYear();
-    const sequence =
-      Math.max(
-        0,
-        ...norms.map((norm) => Number.parseInt(norm.number.split("-").at(-1), 10) || 0),
-      ) + 1;
-    const id = `norm-${Date.now()}`;
-    const file = form.get("file");
-    const newNorm = {
-      id,
-      number: `SOKOL-${year}-${String(sequence).padStart(3, "0")}`,
-      title: form.get("title").trim(),
-      category: form.get("category").trim(),
-      version: form.get("version").trim(),
-      status: form.get("status"),
-      commentsOpen: form.get("status") === "K připomínkování",
-      publishedAt:
-        form.get("status") === "K připomínkování"
-          ? new Date().toISOString().slice(0, 10)
-          : "",
-      deadline: form.get("deadline"),
-      submittedBy: form.get("submittedBy").trim(),
-      responsible: form.get("responsible").trim(),
-      summary: form.get("summary").trim(),
-      reason: form.get("reason").trim(),
-      file: null,
-      needVotes: { yes: 0, no: 0 },
-      sections: [
+  const detailActions = {
+    ...normCatalog.actions,
+    onBack: () => actions.setView("landing"),
+    manage: openAdmin,
+    openContribution
+  };
+  const administrationActions = {
+    ...normCatalog.actions,
+    selectNorm: setAdminId,
+    openCreate,
+    openPublic: openNorm,
+    deleteNorm
+  };
+  if (state.recoveryRequired) {
+    return /* @__PURE__ */ jsx("main", { children: /* @__PURE__ */ jsxs("section", { className: "recoveryPage", role: "alert", children: [
+      /* @__PURE__ */ jsx("img", { src: "/brand/sokol-symbol.png", alt: "" }),
+      /* @__PURE__ */ jsx("p", { className: "kicker", children: "Bezpečná obnova lokální demoverze" }),
+      /* @__PURE__ */ jsx("h1", { children: "Lokální data nelze bezpečně načíst" }),
+      /* @__PURE__ */ jsx("p", { children: state.recoveryReason === "newer-schema" ? "Data vytvořila novější verze aplikace. Tato verze je nepřepíše." : "Uložená data jsou poškozená nebo nekompatibilní. Zůstala beze změny." }),
+      /* @__PURE__ */ jsx("p", { className: "demoBoundary", children: "Obnova odstraní pouze data této lokální demoverze v aktuálním profilu prohlížeče a nahradí je ukázkovým stavem." }),
+      /* @__PURE__ */ jsx("button", { className: "primaryButton", onClick: actions.resetDemoData, children: "Obnovit ukázková data" })
+    ] }) });
+  }
+  const canAdministerNorms = canCreateNorm(currentUser);
+  return /* @__PURE__ */ jsxs("main", { children: [
+    /* @__PURE__ */ jsxs("header", { className: "topbar", children: [
+      /* @__PURE__ */ jsxs("button", { className: "brand", onClick: () => actions.setView("landing"), children: [
+        /* @__PURE__ */ jsx("img", { src: "/brand/sokol-symbol.png", alt: "" }),
+        /* @__PURE__ */ jsxs("span", { children: [
+          /* @__PURE__ */ jsx("strong", { children: "SOKOL" }),
+          " spolurozhoduje"
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxs("nav", { "aria-label": "Hlavn\xED navigace", children: [
+        /* @__PURE__ */ jsx("button", { className: view === "landing" ? "active" : "", "aria-current": view === "landing" ? "page" : void 0, onClick: () => actions.setView("landing"), children: "Normy" }),
+        /* @__PURE__ */ jsx("button", { className: view === "detail" ? "active" : "", "aria-current": view === "detail" ? "page" : void 0, onClick: () => openNorm(selectedNorm?.id), children: "P\u0159ipom\xEDnkov\xE1n\xED" }),
+        canAdministerNorms && /* @__PURE__ */ jsx("button", { className: view === "admin" ? "active" : "", "aria-current": view === "admin" ? "page" : void 0, onClick: () => openAdmin(), children: "Administrace" }),
+        canAccessUserAdministration(currentUser) && /* @__PURE__ */ jsx("button", { className: view === "users" ? "active" : "", "aria-current": view === "users" ? "page" : void 0, onClick: () => actions.setView("users"), children: "U\u017Eivatel\xE9" })
+      ] }),
+      /* @__PURE__ */ jsx(
+        UserMenu,
         {
-          id: "document",
-          label: "Dokument",
-          title: "Text nahraného materiálu",
-          paragraphs: [
-            "Pro pilotní test je původní soubor dostupný ke stažení. Strukturovaný převod dokumentu bude doplněn v navazující integrační fázi.",
-          ],
+          currentUser,
+          onLogin: () => actions.openLogin(),
+          onProfile: () => actions.setView("profile"),
+          onLogout: actions.logout
+        }
+      )
+    ] }),
+    view === "landing" && /* @__PURE__ */ jsx(
+      LandingPage,
+      {
+        norms: normCatalog.norms,
+        filter: normCatalog.filter,
+        onFilter: normCatalog.actions.setFilter,
+        onOpen: openNorm
+      }
+    ),
+    view === "detail" && /* @__PURE__ */ jsx(
+      NormDetail,
+      {
+        norm: selectedNorm,
+        currentUser,
+        permissions: {
+          canParticipate: normCatalog.permissions.canParticipate,
+          canManage: normCatalog.permissions.canManageNorm(selectedNorm),
+          needVote: normCatalog.permissions.needVote?.(selectedNorm),
+          submissionVote: (submissionId) => normCatalog.permissions.submissionVote?.(selectedNorm, submissionId) || 0
         },
-      ],
-      submissions: [],
-    };
-    setNorms((items) => [...items, newNorm]);
-    setAdminId(id);
-    setSelectedId(id);
-    setShowCreate(false);
-    if (file instanceof File && file.size > 0) {
-      window.setTimeout(() => replaceDocument(newNorm, file), 0);
-    }
-    flash(`Norma ${newNorm.number} byla založena.`);
-  }
-
-  function submitContribution(event) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const kind = submissionMode === "proposal" ? "Návrh úpravy" : "Komentář";
-    const contribution = {
-      id: `sub-${Date.now()}`,
-      kind,
-      section: form.get("section").trim() || "Obecně",
-      title: form.get("title").trim(),
-      text: form.get("text").trim(),
-      author: form.get("author").trim(),
-      unit: form.get("unit").trim(),
-      createdAt: new Date().toISOString().slice(0, 10),
-      score: 0,
-      resolutionStatus: "Nevypořádáno",
-      resolution: "",
-      adminComment: "",
-      replies: [],
-    };
-    updateNorm(selectedNorm.id, (norm) => ({
-      submissions: [...norm.submissions, contribution],
-    }));
-    setSubmissionMode(null);
-    flash(`${kind} byl zveřejněn.`);
-  }
-
-  function addReply(event, normId, submissionId, author = "Předkladatel") {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const text = form.get("reply").trim();
-    if (!text) return;
-    updateNorm(normId, (norm) => ({
-      submissions: norm.submissions.map((item) =>
-        item.id === submissionId
-          ? {
-              ...item,
-              replies: [
-                ...(item.replies || []),
-                { id: `reply-${Date.now()}`, author, text },
-              ],
-            }
-          : item,
-      ),
-    }));
-    event.currentTarget.reset();
-    flash("Odpověď byla přidána.");
-  }
-
-  function resolveSubmission(event, normId, submissionId) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    updateNorm(normId, (norm) => ({
-      submissions: norm.submissions.map((item) =>
-        item.id === submissionId
-          ? {
-              ...item,
-              resolutionStatus: form.get("resolutionStatus"),
-              resolution: form.get("resolution").trim(),
-              adminComment: form.get("adminComment").trim(),
-            }
-          : item,
-      ),
-    }));
-    flash("Vypořádání bylo uloženo a je viditelné členům.");
-  }
-
-  return (
-    <main>
-      <header className="topbar">
-        <button className="brand" onClick={() => setView("landing")}>
-          <img src="/brand/sokol-symbol.png" alt="" />
-          <span><strong>SOKOL</strong> spolurozhoduje</span>
-        </button>
-        <nav aria-label="Hlavní navigace">
-          <button className={view === "landing" ? "active" : ""} onClick={() => setView("landing")}>Normy</button>
-          <button className={view === "detail" ? "active" : ""} onClick={() => openNorm(selectedNorm?.id)}>Připomínkování</button>
-          <button className={view === "admin" ? "active" : ""} onClick={() => openAdmin()}>Administrace</button>
-        </nav>
-        <div className="userBox"><span>MK</span><small>pilotní účet</small></div>
-      </header>
-
-      {view === "landing" && (
-        <>
-          <section className="hero">
-            <div>
-              <p className="kicker">Participativní tvorba sokolských norem</p>
-              <h1>Rozhodujme společně.</h1>
-              <p>Připomínkujte návrhy, podávejte konkrétní úpravy a sledujte, jak předkladatel každý podnět vypořádal.</p>
-              <button className="primaryButton" onClick={() => document.getElementById("normy")?.scrollIntoView({ behavior: "smooth" })}>Zobrazit normy</button>
-            </div>
-            <aside>
-              <b>Jak to probíhá</b>
-              <ol>
-                <li><span>1</span>Přečtete si materiál a důvodovou zprávu.</li>
-                <li><span>2</span>Přidáte komentář nebo přesný návrh změny.</li>
-                <li><span>3</span>Hlasováním podpoříte důležité podněty.</li>
-                <li><span>4</span>Uvidíte rozhodnutí a odůvodnění předkladatele.</li>
-              </ol>
-            </aside>
-          </section>
-
-          <section className="normListSection" id="normy">
-            <div className="sectionHeading">
-              <div><p className="kicker">Evidence materiálů</p><h2>Normy k připomínkování</h2></div>
-              <div className="filterTabs">
-                {["Aktivní", "Uzavřené", "Všechny"].map((item) => (
-                  <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>
-                ))}
-              </div>
-            </div>
-            <div className="normGrid">
-              {filteredNorms.length ? filteredNorms.map((norm) => (
-                <article className="normCard" key={norm.id}>
-                  <div className="cardTop"><span className="normNumber">{norm.number}</span><StatusBadge value={norm.status} /></div>
-                  <p className="category">{norm.category} · verze {norm.version}</p>
-                  <h3>{norm.title}</h3>
-                  <p className="summary">{norm.summary}</p>
-                  <dl>
-                    <div><dt>Předkládá</dt><dd>{norm.submittedBy}</dd></div>
-                    <div><dt>Odpovídá</dt><dd>{norm.responsible}</dd></div>
-                    <div><dt>Připomínky</dt><dd>{norm.commentsOpen ? `do ${dateLabel(norm.deadline)}` : "uzavřeny"}</dd></div>
-                  </dl>
-                  <div className="cardFooter"><span>{norm.submissions.length} podnětů</span><button onClick={() => openNorm(norm.id)}>Otevřít materiál →</button></div>
-                </article>
-              )) : <EmptyState>V této skupině zatím nejsou žádné normy.</EmptyState>}
-            </div>
-          </section>
-        </>
-      )}
-
-      {view === "detail" && selectedNorm && (
-        <section className="detailPage">
-          <button className="backButton" onClick={() => setView("landing")}>← Zpět na seznam norem</button>
-          <div className="detailHeader">
-            <div>
-              <div className="detailMeta"><span className="normNumber">{selectedNorm.number}</span><StatusBadge value={selectedNorm.status} /></div>
-              <h1>{selectedNorm.title}</h1>
-              <p>{selectedNorm.summary}</p>
-            </div>
-            <div className="detailActions">
-              <button onClick={() => downloadDocument(selectedNorm)}>{selectedNorm.file ? `Stáhnout ${selectedNorm.file.name}` : "Soubor není přiložen"}</button>
-              <button className="primaryButton small" onClick={() => openAdmin(selectedNorm.id)}>Spravovat</button>
-            </div>
-          </div>
-
-          <div className="detailFacts">
-            <div><span>Předkládá</span><b>{selectedNorm.submittedBy}</b></div>
-            <div><span>Za normu odpovídá</span><b>{selectedNorm.responsible}</b></div>
-            <div><span>Zveřejněno</span><b>{dateLabel(selectedNorm.publishedAt)}</b></div>
-            <div><span>Termín</span><b>{dateLabel(selectedNorm.deadline)}</b></div>
-          </div>
-
-          <div className="detailLayout">
-            <div className="documentColumn">
-              <section className="reasonBox">
-                <p className="kicker">Průvodní informace / důvodová zpráva</p>
-                <h2>Proč se norma mění</h2>
-                <p>{selectedNorm.reason}</p>
-              </section>
-              <div className="documentPaper">
-                <p className="documentLabel">{selectedNorm.category} · verze {selectedNorm.version}</p>
-                <h2>{selectedNorm.title}</h2>
-                {selectedNorm.sections.map((section) => (
-                  <section className="documentSection" key={section.id}>
-                    <div><b>{section.label}</b><h3>{section.title}</h3></div>
-                    {section.paragraphs.map((paragraph, index) => (
-                      <p key={`${section.id}-${index}`}><span>({index + 1})</span>{paragraph}</p>
-                    ))}
-                  </section>
-                ))}
-                <div className="needVote">
-                  <div><b>Je přijetí této normy potřebné?</b><p>Orientační hlasování členů není konečným schválením normy.</p></div>
-                  <div>
-                    <button className={needVote === "yes" ? "selected yes" : ""} onClick={() => {
-                      if (needVote) return;
-                      setNeedVote("yes");
-                      updateNorm(selectedNorm.id, (norm) => ({ needVotes: { ...norm.needVotes, yes: norm.needVotes.yes + 1 } }));
-                    }}>Ano {selectedNorm.needVotes.yes}</button>
-                    <button className={needVote === "no" ? "selected no" : ""} onClick={() => {
-                      if (needVote) return;
-                      setNeedVote("no");
-                      updateNorm(selectedNorm.id, (norm) => ({ needVotes: { ...norm.needVotes, no: norm.needVotes.no + 1 } }));
-                    }}>Ne {selectedNorm.needVotes.no}</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <aside className="contributions">
-              <div className="contributionHeader">
-                <div><p className="kicker">Diskuse</p><h2>Podněty členů</h2></div>
-                {selectedNorm.commentsOpen && <div><button onClick={() => setSubmissionMode("comment")}>Komentář</button><button className="primaryButton small" onClick={() => setSubmissionMode("proposal")}>Návrh změny</button></div>}
-              </div>
-              {!selectedNorm.commentsOpen && <div className="closedNotice">Připomínkování je uzavřeno. Výsledky zůstávají veřejné.</div>}
-              {selectedNorm.submissions.length ? selectedNorm.submissions.slice().sort((a, b) => b.score - a.score).map((item) => {
-                const voteKey = `${selectedNorm.id}:${item.id}`;
-                return (
-                  <article className="submissionCard" key={item.id}>
-                    <div className="submissionTop"><span>{item.kind}</span><small>{item.section}</small></div>
-                    <h3>{item.title}</h3><p>{item.text}</p>
-                    <div className="authorLine"><b>{item.author}</b><span>{item.unit} · {dateLabel(item.createdAt)}</span></div>
-                    {item.resolutionStatus !== "Nevypořádáno" && (
-                      <div className={`resolutionBox ${item.resolutionStatus === "Zapracováno" ? "accepted" : "declined"}`}>
-                        <b>{item.resolutionStatus}</b><p>{item.resolution}</p>{item.adminComment && <small>Předkladatel: {item.adminComment}</small>}
-                      </div>
-                    )}
-                    {(item.replies || []).map((reply) => <div className="reply" key={reply.id}><b>{reply.author}</b><p>{reply.text}</p></div>)}
-                    {selectedNorm.commentsOpen && <form className="replyForm" onSubmit={(event) => addReply(event, selectedNorm.id, item.id, "Člen")}><input name="reply" aria-label="Odpověď" placeholder="Odpovědět…" required /><button>Odeslat</button></form>}
-                    <div className="voteRow"><span>Je tento podnět důležitý?</span><div><button className={votes[voteKey] === 1 ? "selected" : ""} onClick={() => castVote(selectedNorm.id, item.id, 1)}>↑</button><b>{item.score}</b><button className={votes[voteKey] === -1 ? "selected down" : ""} onClick={() => castVote(selectedNorm.id, item.id, -1)}>↓</button></div></div>
-                  </article>
-                );
-              }) : <EmptyState>Zatím nebyl přidán žádný podnět.</EmptyState>}
-            </aside>
-          </div>
-        </section>
-      )}
-
-      {view === "admin" && (
-        <section className="adminPage">
-          <div className="adminHeading">
-            <div><p className="kicker">Rozhraní předkladatele</p><h1>Správa norem</h1><p>Publikace materiálů, řízení připomínkování a transparentní vypořádání podnětů.</p></div>
-            <button className="primaryButton" onClick={() => setShowCreate(true)}>+ Předložit novou normu</button>
-          </div>
-          <div className="adminLayout">
-            <aside className="adminNormList">
-              {norms.map((norm) => <button key={norm.id} className={norm.id === adminNorm?.id ? "active" : ""} onClick={() => setAdminId(norm.id)}><span>{norm.number}</span><b>{norm.title}</b><StatusBadge value={norm.status} /></button>)}
-            </aside>
-            {adminNorm ? (
-              <div className="adminWorkspace">
-                <div className="adminToolbar">
-                  <div><span className="normNumber">{adminNorm.number}</span><h2>{adminNorm.title}</h2></div>
-                  <div><button onClick={() => openNorm(adminNorm.id)}>Veřejný náhled</button><button className="dangerButton" onClick={() => deleteNorm(adminNorm)}>Smazat</button></div>
-                </div>
-                <section className="adminSection">
-                  <div className="adminSectionTitle"><div><h3>Stav a připomínkování</h3><p>Změny se ihned projeví ve veřejném náhledu.</p></div><StatusBadge value={adminNorm.status} /></div>
-                  <div className="adminControls">
-                    <label>Status normy<select value={adminNorm.status} onChange={(event) => updateNorm(adminNorm.id, { status: event.target.value })}>{STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
-                    <label>Termín připomínek<input type="date" value={adminNorm.deadline || ""} onChange={(event) => updateNorm(adminNorm.id, { deadline: event.target.value })} /></label>
-                    <div className="toggleControl"><span>Připomínky jsou <b>{adminNorm.commentsOpen ? "otevřené" : "uzavřené"}</b></span><button className={adminNorm.commentsOpen ? "closeButton" : "primaryButton small"} onClick={() => updateNorm(adminNorm.id, { commentsOpen: !adminNorm.commentsOpen })}>{adminNorm.commentsOpen ? "Uzavřít připomínky" : "Otevřít připomínky"}</button></div>
-                  </div>
-                </section>
-                <section className="adminSection">
-                  <div className="adminSectionTitle"><div><h3>Dokument a odpovědnost</h3><p>Údaje, které členové uvidí u normy.</p></div></div>
-                  <div className="adminControls twoColumns">
-                    <label>Předkladatel<input value={adminNorm.submittedBy} onChange={(event) => updateNorm(adminNorm.id, { submittedBy: event.target.value })} /></label>
-                    <label>Odpovídá za normu<input value={adminNorm.responsible} onChange={(event) => updateNorm(adminNorm.id, { responsible: event.target.value })} /></label>
-                    <label className="wide">Průvodní informace / důvodová zpráva<textarea value={adminNorm.reason} onChange={(event) => updateNorm(adminNorm.id, { reason: event.target.value })} /></label>
-                    <label className="fileField wide"><span>{adminNorm.file ? `Nahráno: ${adminNorm.file.name}` : "Nahrát PDF, DOCX nebo ODT"}</span><input type="file" accept=".pdf,.docx,.odt" onChange={(event) => replaceDocument(adminNorm, event.target.files?.[0])} /></label>
-                  </div>
-                </section>
-                <section className="adminSection">
-                  <div className="adminSectionTitle"><div><h3>Vypořádání podnětů</h3><p>{adminNorm.submissions.filter((item) => item.resolutionStatus === "Nevypořádáno").length} čeká na rozhodnutí.</p></div></div>
-                  <div className="resolutionList">
-                    {adminNorm.submissions.length ? adminNorm.submissions.map((item) => (
-                      <article className="resolutionItem" key={item.id}>
-                        <div><span>{item.kind} · {item.section}</span><h4>{item.title}</h4><p>{item.text}</p><small>{item.author}, {item.unit} · podpora {item.score}</small></div>
-                        <form onSubmit={(event) => resolveSubmission(event, adminNorm.id, item.id)}>
-                          <label>Výsledek<select name="resolutionStatus" defaultValue={item.resolutionStatus}><option>Nevypořádáno</option><option>Zapracováno</option><option>Nezapracováno</option></select></label>
-                          <label>Odůvodnění rozhodnutí<textarea name="resolution" defaultValue={item.resolution} placeholder="Popište, jak a proč byl podnět vypořádán." /></label>
-                          <label>Komentář předkladatele<input name="adminComment" defaultValue={item.adminComment} placeholder="Volitelná doplňující odpověď" /></label>
-                          <button className="primaryButton small">Uložit vypořádání</button>
-                        </form>
-                        <form className="adminReply" onSubmit={(event) => addReply(event, adminNorm.id, item.id)}><input name="reply" placeholder="Okomentovat podnět jako předkladatel…" required /><button>Odeslat komentář</button></form>
-                      </article>
-                    )) : <EmptyState>U této normy zatím nejsou žádné podněty.</EmptyState>}
-                  </div>
-                </section>
-              </div>
-            ) : <EmptyState>Nejprve založte novou normu.</EmptyState>}
-          </div>
-        </section>
-      )}
-
-      {submissionMode && selectedNorm && (
-        <div className="modalBackdrop" onMouseDown={() => setSubmissionMode(null)}>
-          <form className="modal" onSubmit={submitContribution} onMouseDown={(event) => event.stopPropagation()}>
-            <button type="button" className="modalClose" onClick={() => setSubmissionMode(null)}>×</button>
-            <p className="kicker">{selectedNorm.number}</p><h2>{submissionMode === "proposal" ? "Nový návrh změny" : "Nový komentář"}</h2>
-            <label>Jméno<input name="author" required placeholder="Jan Novák" /></label>
-            <label>Jednota / župa<input name="unit" required placeholder="TJ Sokol…" /></label>
-            <label>Část dokumentu<input name="section" placeholder="např. § 4 odst. 2" /></label>
-            <label>Název<input name="title" required placeholder="Stručné pojmenování podnětu" /></label>
-            <label>{submissionMode === "proposal" ? "Navrhované znění a odůvodnění" : "Komentář"}<textarea name="text" required /></label>
-            <div className="modalActions"><button type="button" onClick={() => setSubmissionMode(null)}>Zrušit</button><button className="primaryButton">Zveřejnit</button></div>
-          </form>
-        </div>
-      )}
-
-      {showCreate && (
-        <div className="modalBackdrop" onMouseDown={() => setShowCreate(false)}>
-          <form className="modal wideModal" onSubmit={createNorm} onMouseDown={(event) => event.stopPropagation()}>
-            <button type="button" className="modalClose" onClick={() => setShowCreate(false)}>×</button>
-            <p className="kicker">Nový materiál</p><h2>Předložit normu</h2>
-            <div className="formGrid">
-              <label className="wide">Název normy<input name="title" required /></label>
-              <label>Druh dokumentu<input name="category" required placeholder="Směrnice" /></label>
-              <label>Verze<input name="version" required defaultValue="1.0" /></label>
-              <label>Předkladatel<input name="submittedBy" required /></label>
-              <label>Odpovídá za normu<input name="responsible" required /></label>
-              <label>Status<select name="status" defaultValue="Koncept">{STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select></label>
-              <label>Termín připomínek<input name="deadline" type="date" /></label>
-              <label className="wide">Krátké shrnutí<textarea name="summary" required /></label>
-              <label className="wide">Průvodní informace / důvodová zpráva<textarea name="reason" required /></label>
-              <label className="fileField wide"><span>Přiložit dokument (max. 15 MB)</span><input name="file" type="file" accept=".pdf,.docx,.odt" /></label>
-            </div>
-            <div className="modalActions"><button type="button" onClick={() => setShowCreate(false)}>Zrušit</button><button className="primaryButton">Předložit normu</button></div>
-          </form>
-        </div>
-      )}
-      {toast && <div className="toast">{toast}</div>}
-    </main>
-  );
+        actions: detailActions
+      }
+    ),
+    view === "admin" && (canAdministerNorms ? /* @__PURE__ */ jsx(
+      NormAdministration,
+      {
+        norms: normAdministration.norms,
+        selectedNorm: adminNorm,
+        currentUser,
+        actions: administrationActions
+      }
+    ) : /* @__PURE__ */ jsxs("section", { className: "adminPage unauthorized", role: "alert", children: [
+      /* @__PURE__ */ jsx("h1", { children: "Administrace je dostupná pouze správcům" }),
+      /* @__PURE__ */ jsx("p", { children: "Běžný člen může číst, komentovat a hlasovat u otevřených norem." })
+    ] })),
+    view === "profile" && /* @__PURE__ */ jsx(
+      MemberProfile,
+      {
+        user: currentUser,
+        contributions: memberProfile.contributions,
+        votes: memberProfile.votes,
+        actions: memberProfile.actions
+      }
+    ),
+    view === "users" && /* @__PURE__ */ jsx(
+      UserAdministration,
+      {
+        currentUser,
+        users: userAdministration.users,
+        selectedUser: userAdministration.selectedUser,
+        auditEvents: userAdministration.auditEvents,
+        summary: userAdministration.summary,
+        filters: userAdministration.filters,
+        setupDeliveries: userAdministration.setupDeliveries,
+        actions: userAdministration.actions
+      }
+    ),
+    submissionMode && selectedNorm && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeContribution, children: /* @__PURE__ */ jsxs("form", { ref: contributionDialogRef, className: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "contribution-dialog-title", onSubmit: submitContribution, onMouseDown: (event) => event.stopPropagation(), children: [
+      /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: closeContribution, children: "\xD7" }),
+      /* @__PURE__ */ jsx("p", { className: "kicker", children: selectedNorm.number }),
+      /* @__PURE__ */ jsx("h2", { id: "contribution-dialog-title", children: submissionMode === "proposal" ? "Nov\xFD n\xE1vrh zm\u011Bny" : "Nov\xFD koment\xE1\u0159" }),
+      /* @__PURE__ */ jsx("p", { children: "Jm\xE9no a jednota se bezpe\u010Dn\u011B p\u0159evezmou z p\u0159ihl\xE1\u0161en\xE9ho \xFA\u010Dtu." }),
+      /* @__PURE__ */ jsxs("label", { children: [
+        "\u010C\xE1st dokumentu",
+        /* @__PURE__ */ jsx("input", { name: "section", placeholder: "nap\u0159. \xA7 4 odst. 2", autoFocus: true })
+      ] }),
+      /* @__PURE__ */ jsxs("label", { children: [
+        "N\xE1zev",
+        /* @__PURE__ */ jsx("input", { name: "title", required: true, placeholder: "Stru\u010Dn\xE9 pojmenov\xE1n\xED podn\u011Btu" })
+      ] }),
+      /* @__PURE__ */ jsxs("label", { children: [
+        submissionMode === "proposal" ? "Navrhovan\xE9 zn\u011Bn\xED a od\u016Fvodn\u011Bn\xED" : "Koment\xE1\u0159",
+        /* @__PURE__ */ jsx("textarea", { name: "text", required: true })
+      ] }),
+      /* @__PURE__ */ jsxs("div", { className: "modalActions", children: [
+        /* @__PURE__ */ jsx("button", { type: "button", onClick: closeContribution, children: "Zru\u0161it" }),
+        /* @__PURE__ */ jsx("button", { className: "primaryButton", children: "Zve\u0159ejnit" })
+      ] })
+    ] }) }),
+    showCreate && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeCreate, children: /* @__PURE__ */ jsxs("form", { ref: createDialogRef, className: "modal wideModal", role: "dialog", "aria-modal": "true", "aria-labelledby": "create-norm-dialog-title", onSubmit: createNorm, onMouseDown: (event) => event.stopPropagation(), children: [
+      /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: closeCreate, children: "\xD7" }),
+      /* @__PURE__ */ jsx("p", { className: "kicker", children: "Nov\xFD materi\xE1l" }),
+      /* @__PURE__ */ jsx("h2", { id: "create-norm-dialog-title", children: "P\u0159edlo\u017Eit normu" }),
+      /* @__PURE__ */ jsxs("div", { className: "formGrid", children: [
+        /* @__PURE__ */ jsxs("label", { className: "wide", children: [
+          "N\xE1zev normy",
+          /* @__PURE__ */ jsx("input", { name: "title", required: true, autoFocus: true })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { children: [
+          "Druh dokumentu",
+          /* @__PURE__ */ jsx("input", { name: "category", required: true, placeholder: "Sm\u011Brnice" })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { children: [
+          "Verze",
+          /* @__PURE__ */ jsx("input", { name: "version", required: true, defaultValue: "1.0" })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { children: [
+          "P\u0159edkladatel",
+          /* @__PURE__ */ jsx("input", { name: "submittedBy", required: true })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { children: [
+          "Odpov\xEDd\xE1 za normu",
+          /* @__PURE__ */ jsx("input", { name: "responsible", required: true })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { children: [
+          "Status",
+          /* @__PURE__ */ jsx("select", { name: "status", defaultValue: "Koncept", children: STATUS_OPTIONS.map((status) => /* @__PURE__ */ jsx("option", { children: status }, status)) })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { children: [
+          "Term\xEDn p\u0159ipom\xEDnek",
+          /* @__PURE__ */ jsx("input", { name: "deadline", type: "date" })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { className: "wide", children: [
+          "Kr\xE1tk\xE9 shrnut\xED",
+          /* @__PURE__ */ jsx("textarea", { name: "summary", required: true })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { className: "wide", children: [
+          "Pr\u016Fvodn\xED informace / d\u016Fvodov\xE1 zpr\xE1va",
+          /* @__PURE__ */ jsx("textarea", { name: "reason", required: true })
+        ] }),
+        /* @__PURE__ */ jsxs("label", { className: "fileField wide", children: [
+          /* @__PURE__ */ jsx("span", { children: "P\u0159ilo\u017Eit dokument (max. 15 MB)" }),
+          /* @__PURE__ */ jsx("input", { name: "file", type: "file", accept: ".pdf,.docx,.odt" })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxs("div", { className: "modalActions", children: [
+        /* @__PURE__ */ jsx("button", { type: "button", onClick: closeCreate, children: "Zru\u0161it" }),
+        /* @__PURE__ */ jsx("button", { className: "primaryButton", children: "P\u0159edlo\u017Eit normu" })
+      ] })
+    ] }) }),
+    authMode && services?.auth && /* @__PURE__ */ jsx(
+      AuthDialog,
+      {
+        authMode,
+        initialDelivery: authDelivery,
+        authService: services.auth,
+        onAuthenticated: actions.authenticated,
+        onClose: actions.closeLogin
+      }
+    ),
+    /* @__PURE__ */ jsx(Feedback, { feedback })
+  ] });
 }
+export {
+  Home as default
+};

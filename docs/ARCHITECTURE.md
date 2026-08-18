@@ -4,29 +4,69 @@
 
 Rozhraní je postavené jako aplikace React/Next kompatibilní s vinext a Cloudflare Workers. Veškeré změny uživatele se v pilotu ukládají lokálně:
 
-- metadata norem, komentáře, vypořádání a hlasy: `localStorage`,
+- uživatelé, přístupové výzvy, relace, audit, metadata norem, komentáře, vypořádání a hlasy: `localStorage`,
 - nahrané dokumenty: IndexedDB,
 - výchozí ukázková data: zdrojový kód klienta.
 
-Tento režim umožňuje bezpečně ověřit informační architekturu a uživatelské scénáře bez zřízení databáze. Není to sdílený víceuživatelský provoz.
+Tento režim umožňuje ověřit informační architekturu a uživatelské scénáře bez zřízení databáze. Není to sdílený víceuživatelský provoz ani bezpečnostní model pro produkci: návštěvník ovládá JavaScript i lokální data svého prohlížeče.
+
+## Klientská hranice a služby
+
+Prezentační komponenty volají akce z `useAppController()` a nerozhodují samy o oprávnění. Controller skládá následující veřejné služby:
+
+- `AuthService`: adaptivní identifikace účtu, registrace člena, jednorázové kódy, správcovská hesla, první nastavení a obnova hesla, relace a jejich revokace,
+- `UserService`: seznam a detail uživatelů, založení privilegovaného účtu, stav, role a atomický převod vlastnictví norem,
+- `NormService`: veřejné čtení, role-aware seznam spravovatelných norem, správcovské změny, příspěvky, hlasy a vypořádání,
+- `AuditService`: append-only události s odstraněním hesel, hashů, solí, kódů a tokenů z metadat,
+- `AccessControl`: jednotná pravidla aktivního účtu, ověřeného e-mailu, role a vlastnictví normy,
+- `BrowserRepository`: migrace a kopírované změny stavu nad `localStorage`,
+- `FileRepository`: dokumenty v IndexedDB.
+
+Každá změnová metoda znovu načte relaci a ověří oprávnění. Neplatná relace se při správě normy odmítne a audituje před vyhledáním cílové normy, aby se neprozrazovala její existence. Po commitnutí smazání nebo výměny dokumentu je repository stav a audit autoritativní; úklid starého souboru v IndexedDB je best-effort a jeho selhání nevrací zavádějící neúspěch již provedené operace.
+
+Hesla správců se v pilotu neukládají čitelně. Kryptografický adaptér používá PBKDF2 se SHA-256, 210 000 iteracemi a samostatnou 16bajtovou solí. Protože výpočet i ověření probíhá v nedůvěryhodném klientu, jde pouze o simulaci produkčního toku.
 
 ## Doporučená produkční architektura
+
+### Implementovaný serverový základ — etapa A
+
+Aktuální větev už obsahuje standardní Next.js server nad PostgreSQL. Identitu
+určuje serverová `HttpOnly` relace, změnové požadavky vyžadují CSRF token a
+autorizace rolí i vlastnictví probíhá v aplikačních službách nad databází.
+Správci používají heslo hashované Argon2id a TOTP MFA; členové nadále používají
+šestimístný jednorázový e-mailový kód. Mutace zapisují audit a doménový outbox
+transakčně. Veřejný bootstrap neposílá e-mail, členské ID, vlastníka ani interní
+verzi řádku.
+
+Serverový základ je distribuován jako standardní Next standalone Docker image
+spouštěný neprivilegovaným uživatelem. Trasy `/api/health/live` a
+`/api/health/ready` oddělují živost procesu od dostupnosti databáze.
+
+Stávající browserová ukázka zůstává samostatným režimem pro prezentaci. Nesmí se
+považovat za produkční úložiště. Etapa A ještě neimplementuje serverový upload,
+archivaci a převod DOCX, stabilní textové bloky, připomínky ani hlasování; tyto
+funkce jsou následující etapou.
 
 ```text
 Prohlížeč
   |
   v
 Webová aplikace + API
-  |-- identita a role člena
-  |-- validace a autorizace
-  |-- audit administrativních akcí
+  |-- serverová autentizace, bezpečné cookies a správa relací
+  |-- serverová autorizace rolí a vlastnictví u každé změny
+  |-- validace, rate limiting a centrální audit
+  |-- e-mailové kódy a odkazy s krátkou platností
   |
   +--> relační databáze
   |      normy, verze, podněty, hlasy, vypořádání
   |
   +--> objektové úložiště
-         původní dokumenty, přílohy a finální znění
+  |      původní dokumenty, přílohy a finální znění
+  |
+  +--> e-mailová služba a fronta úloh
 ```
+
+Produkční API musí od klienta přijímat pouze záměr operace. Identitu aktéra, platnost relace, roli, stav účtu a vlastnictví normy určí server z vlastní databáze; klientské `localStorage`, skryté tlačítko ani předané `ownerAdminId` nejsou autoritou. Hesla musí hashovat server vhodným password-hashing algoritmem, tajné výzvy ukládat pouze v odvozené podobě a relace chránit bezpečnými `HttpOnly` cookies. Součástí nasazení jsou CSRF/XSS ochrana, omezení pokusů, rotace relací, zálohy a sledovatelný audit.
 
 ## Základní entity
 
@@ -36,13 +76,16 @@ Webová aplikace + API
 - `Vote`: jeden hlas člena pro konkrétní podnět nebo orientační potřebnost normy.
 - `Resolution`: výsledek zapracováno/nezapracováno, odůvodnění a vazba na výslednou verzi.
 - `AuditEvent`: kdo, kdy a jak změnil stav normy nebo vypořádání.
+- `User`: profil, role `member | admin | superadmin`, stav, ověření e-mailu a odvozené přihlašovací údaje správce.
+- `LoginChallenge`: jednorázový členský kód nebo odkaz pro první či obnovené heslo.
+- `Session`: osmihodinová relace s možností okamžité revokace.
 
 ## Role
 
-- člen: čte, komentuje, navrhuje a hlasuje,
-- předkladatel: spravuje vlastní normy a vypořádává podněty,
-- administrátor: spravuje uživatele, role, číselné řady a provozní nastavení,
-- veřejnost: podle rozhodnutí provozovatele může vidět publikované výsledky bez možnosti změn.
+- veřejnost: čte seznam a veřejný detail publikovaných norem bez možnosti změn,
+- člen: po ověření e-mailu komentuje, navrhuje a hlasuje,
+- administrátor: má členská oprávnění a spravuje pouze normy, které vlastní,
+- superadministrátor: spravuje všechny normy, uživatele, role, stavy a převody vlastnictví.
 
 ## Číslování
 
