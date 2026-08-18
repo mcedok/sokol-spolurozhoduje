@@ -10,6 +10,7 @@ import { createAzureBlobStorage } from "./modules/files/azure-blob-storage";
 import { fileConfig } from "./modules/files/file-config";
 import { createUploadService } from "./modules/files/upload-service";
 import { createConversionService } from "./modules/conversion/conversion-service";
+import { createFileDownloadService } from "./modules/files/file-download-service";
 
 export interface IdentityRuntime {
   sql: Sql;
@@ -20,6 +21,7 @@ export interface IdentityRuntime {
   files: ReturnType<typeof createAzureBlobStorage>;
   uploads: ReturnType<typeof createUploadService>;
   conversions: ReturnType<typeof createConversionService>;
+  downloads: ReturnType<typeof createFileDownloadService>;
 }
 
 let identityRuntime: IdentityRuntime | undefined;
@@ -28,7 +30,8 @@ export function getIdentityRuntime(): IdentityRuntime {
   if (identityRuntime) return identityRuntime;
   const sql = createDatabase(databaseConfig().databaseUrl);
   const secrets = createSecretServiceFromEnvironment();
-  const files = createAzureBlobStorage(fileConfig());
+  const config = fileConfig();
+  const files = createAzureBlobStorage(config);
   identityRuntime = {
     sql,
     secrets,
@@ -41,8 +44,13 @@ export function getIdentityRuntime(): IdentityRuntime {
     users: createUserService({ sql, secrets }),
     documents: createDocumentService({ sql }),
     files,
-    uploads: createUploadService({ sql, storage: files, config: fileConfig() }),
+    uploads: createUploadService({ sql, storage: files, config }),
     conversions: createConversionService({ sql }),
+    downloads: createFileDownloadService({
+      sql,
+      storage: files,
+      ttlSeconds: config.readUrlTtlSeconds,
+    }),
   };
   return identityRuntime;
 }
