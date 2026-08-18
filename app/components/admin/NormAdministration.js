@@ -1,4 +1,5 @@
 import { createElement as h, useEffect, useState } from "react";
+import { DocumentConversionWizard } from "./DocumentConversionWizard.js";
 
 const STATUS_OPTIONS = [
   "Koncept",
@@ -204,16 +205,23 @@ export function NormAdministration({ norms = [], selectedNorm, currentUser, acti
                 h("label", { className: "wide" }, "Průvodní informace / důvodová zpráva",
                   h("textarea", { value: draft.reason, onChange: (event) => change("reason", event.target.value) }),
                 ),
-                h("label", { className: "fileField wide" },
-                  h("span", null, selectedNorm.file ? `Nahráno: ${selectedNorm.file.name}` : "Nahrát PDF, DOCX nebo ODT"),
-                  h("input", { type: "file", accept: ".pdf,.docx,.odt", onChange: (event) => actions.replaceDocument?.(selectedNorm, event.target.files?.[0]) }),
-                ),
               ),
             ),
             h("div", { className: "normEditActions" },
               h("button", { className: "primaryButton", type: "submit" }, "Uložit změny normy"),
             ),
           ),
+          actions.uploadDocumentVersion
+            ? h(DocumentConversionWizard, {
+              key: selectedNorm.id,
+              document: selectedNorm,
+              api: actions,
+              onReady: actions.refresh,
+            })
+            : h("section", { className: "adminSection" },
+              h("h3", null, "Dokument DOCX"),
+              h("p", null, "Produkční převod dokumentu je dostupný po připojení k serveru."),
+            ),
           h(
             "section",
             { className: "adminSection" },

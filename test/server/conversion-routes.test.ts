@@ -75,6 +75,7 @@ describe("conversion review routes", () => {
       jobId,
       jobStatus: "parsing",
       versionStatus: "conversion",
+      rowVersion: 7,
       step: "parsing",
       attemptCount: 1,
       errorCode: null,
@@ -89,7 +90,9 @@ describe("conversion review routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
-    expect(await response.text()).not.toMatch(/objectKey|connectionString|sig=/i);
+    const body = await response.json();
+    expect(body.rowVersion).toBe(7);
+    expect(JSON.stringify(body)).not.toMatch(/objectKey|connectionString|sig=/i);
   });
 
   it("returns a redacted preview and maps a foreign-admin denial to 403", async () => {

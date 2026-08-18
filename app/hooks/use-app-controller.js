@@ -287,6 +287,22 @@ export function useAppController({ createServices = createDefaultServices } = {}
     ),
   [runNormMutation]);
 
+  const conversionActions = useMemo(() => {
+    if (services?.backend !== "server") return {};
+    const invoke = (method) => (...args) => servicesRef.current?.[method](...args);
+    return {
+      uploadDocumentVersion: invoke("uploadDocumentVersion"),
+      getConversionProcessing: invoke("getConversionProcessing"),
+      getConversionPreview: invoke("getConversionPreview"),
+      retryConversion: invoke("retryConversion"),
+      updateBlockStructure: invoke("updateBlockStructure"),
+      decideConversionFinding: invoke("decideConversionFinding"),
+      completeConversionReview: invoke("completeConversionReview"),
+      createFileDownloadLink: invoke("createFileDownloadLink"),
+      refresh,
+    };
+  }, [refresh, services?.backend]);
+
   const addContribution = useCallback((normId, input) =>
     runNormMutation((normService, sessionId) =>
       normService.addContribution(sessionId, normId, input),
@@ -566,6 +582,7 @@ export function useAppController({ createServices = createDefaultServices } = {}
     voteSubmission,
     voteNeed,
     resolveSubmission,
+    ...conversionActions,
   }), [
     addContribution,
     addReply,
@@ -579,6 +596,7 @@ export function useAppController({ createServices = createDefaultServices } = {}
     updateNorm,
     voteNeed,
     voteSubmission,
+    conversionActions,
   ]);
 
   return {

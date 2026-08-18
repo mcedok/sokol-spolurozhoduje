@@ -77,7 +77,20 @@ async function seedReview(ownerId: string) {
       ${"b".repeat(64)}, 'docx-web-v1', 'converted'
     )
   `;
-  return { documentId, versionId, blockUid, blockRevisionId, jobId };
+  const referenceFileId = crypto.randomUUID();
+  await testSql`
+    insert into file_objects(
+      id, document_id, data_owner_user_id, purpose, container, object_key, original_name,
+      declared_mime, detected_mime, size_bytes, sha256, etag, av_status, av_checked_at,
+      av_result_code, object_status
+    ) values (
+      ${referenceFileId}, ${documentId}, ${ownerId}, 'reference_render', 'derivatives',
+      ${`${documentId}/${versionId}/reference/${"c".repeat(64)}.pdf`}, 'reference.pdf',
+      'application/pdf', 'application/pdf', 84, ${"c".repeat(64)}, 'reference-etag',
+      'clean', now(), 'DERIVED_FROM_CLEAN_ORIGINAL', 'derivative'
+    )
+  `;
+  return { documentId, versionId, blockUid, blockRevisionId, jobId, referenceFileId };
 }
 
 const readySnapshot = (): ReadinessSnapshot => ({
@@ -360,10 +373,12 @@ describe("conversion review workflow", () => {
       jobId: review.jobId,
       jobStatus: "completed",
       versionStatus: "conversion_review",
+      rowVersion: 1,
     });
     await expect(conversions.getPreview(owner.actor, review.versionId)).resolves.toMatchObject({
       id: review.versionId,
       rowVersion: 1,
+      referenceFileId: review.referenceFileId,
       blocks: [{ blockUid: review.blockUid, text: "Text normy" }],
     });
     await expect(conversions.getPreview(other.actor, review.versionId))
