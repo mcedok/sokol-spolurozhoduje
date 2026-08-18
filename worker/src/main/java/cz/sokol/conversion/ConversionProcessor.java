@@ -37,18 +37,25 @@ public final class ConversionProcessor {
     Optional<BlobStore.StoredBlob> existing = blobStore.probe(targetContainer, targetKey);
     if (existing.isPresent()) {
       if (!job.sha256().equals(existing.orElseThrow().sha256())) throw new IntegrityException();
-      Optional<BlobStore.StoredBlob> quarantine = blobStore.probe(
-          job.sourceContainer(), job.sourceKey());
-      if (quarantine.isPresent()) {
-        if (!job.sourceEtag().equals(quarantine.orElseThrow().etag())
-            || !blobStore.deleteIfMatch(
-                job.sourceContainer(), job.sourceKey(), job.sourceEtag())) {
-          throw new IntegrityException();
+      boolean sourceIsArchivedTarget = targetContainer.equals(job.sourceContainer())
+          && targetKey.equals(job.sourceKey());
+      if (!sourceIsArchivedTarget) {
+        Optional<BlobStore.StoredBlob> quarantine = blobStore.probe(
+            job.sourceContainer(), job.sourceKey());
+        if (quarantine.isPresent()) {
+          if (!job.sourceEtag().equals(quarantine.orElseThrow().etag())
+              || !blobStore.deleteIfMatch(
+                  job.sourceContainer(), job.sourceKey(), job.sourceEtag())) {
+            throw new IntegrityException();
+          }
         }
       }
       repository.markArchived(
           job, targetContainer, targetKey, existing.orElseThrow().etag());
       return Optional.of(new ArchivedSource(targetContainer, targetKey));
+    }
+    if (targetContainer.equals(job.sourceContainer()) && targetKey.equals(job.sourceKey())) {
+      throw new IntegrityException();
     }
     repository.markScanning(job);
     ClamAvClient.AvStatus status;

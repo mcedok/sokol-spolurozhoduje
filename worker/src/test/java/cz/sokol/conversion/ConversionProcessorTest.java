@@ -73,6 +73,28 @@ class ConversionProcessorTest {
   }
 
   @Test
+  void retryNeverDeletesAnAlreadyArchivedOriginal() throws Exception {
+    var operations = new ArrayList<String>();
+    var initial = job();
+    String archivedKey = initial.documentId() + "/" + initial.versionId() + "/"
+        + initial.sha256() + ".docx";
+    var archivedJob = new ConversionProcessor.Job(
+        initial.id(), initial.documentId(), initial.versionId(), initial.fileId(),
+        "originals", archivedKey, initial.sha256(), "etag-output", initial.correlationId(),
+        initial.ownerUserId(), initial.profileVersion(), initial.versionCreatedAt(),
+        initial.leaseOwner());
+    var repository = new FakeRepository(archivedJob, operations);
+    var blobs = new FakeBlobStore(operations, archivedJob.sha256());
+    blobs.targetAlreadyArchived = true;
+
+    new ConversionProcessor(repository, blobs, content -> {
+      throw new AssertionError("Archivovaný originál se při retry znovu neskenuje.");
+    }).scanAndArchive(archivedJob.id());
+
+    assertEquals(List.of("probe-originals", "archived"), operations);
+  }
+
+  @Test
   void rendersAndStoresAContentAddressedReferencePdf() throws Exception {
     var operations = new ArrayList<String>();
     var job = job();

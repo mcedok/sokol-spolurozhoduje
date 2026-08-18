@@ -69,20 +69,18 @@ describe("document conversion foundation", () => {
     expect(rows.map((row) => row.table_name)).toEqual(expected);
   });
 
-  it("enforces unique block order and block identity within a version", async () => {
-    const constraints = await testSql<{ constraint_name: string }[]>`
-      select constraint_name
-      from information_schema.table_constraints
-      where table_schema = 'public'
-        and table_name = 'block_revisions'
-        and constraint_type = 'UNIQUE'
-      order by constraint_name
+  it("enforces unique current block order and identity while retaining history", async () => {
+    const indexes = await testSql<{ indexname: string; indexdef: string }[]>`
+      select indexname, indexdef
+      from pg_indexes
+      where schemaname = 'public' and tablename = 'block_revisions'
+        and indexname in ('block_revisions_current_block_key', 'block_revisions_current_order_key')
+      order by indexname
     `;
-    expect(constraints.map((row) => row.constraint_name)).toEqual(
-      expect.arrayContaining([
-        "block_revisions_version_block_key",
-        "block_revisions_version_order_key",
-      ]),
-    );
+    expect(indexes.map((row) => row.indexname)).toEqual([
+      "block_revisions_current_block_key",
+      "block_revisions_current_order_key",
+    ]);
+    expect(indexes.every((row) => row.indexdef.includes("WHERE (superseded_at IS NULL)"))).toBe(true);
   });
 });

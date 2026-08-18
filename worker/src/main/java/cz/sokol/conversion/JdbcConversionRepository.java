@@ -171,6 +171,28 @@ public final class JdbcConversionRepository implements ConversionProcessor.Repos
             }
           }
         }
+        try (var lock = connection.prepareStatement("""
+            select version.status as version_status, document.status as document_status,
+              not exists (
+                select 1 from document_versions newer
+                where newer.document_id=version.document_id
+                  and newer.version_number>version.version_number
+              ) as is_latest
+            from document_versions version
+            join documents document on document.id=version.document_id
+            where version.id=?
+            for update of version, document
+            """)) {
+          lock.setObject(1, job.versionId());
+          try (var row = lock.executeQuery()) {
+            if (!row.next() || !"conversion".equals(row.getString("version_status"))
+                || !row.getBoolean("is_latest")
+                || !("file_check".equals(row.getString("document_status"))
+                  || "conversion".equals(row.getString("document_status")))) {
+              throw new SQLException("Dokončovaná verze již není aktivní verzí dokumentu.");
+            }
+          }
+        }
         ConversionProcessor.Derivative derivative = conversion.reference();
         try (var statement = connection.prepareStatement("""
             insert into file_objects(
@@ -202,14 +224,25 @@ public final class JdbcConversionRepository implements ConversionProcessor.Repos
               completed_at=now(), lease_owner=null, lease_expires_at=null, heartbeat_at=null,
               updated_at=now() where id=? and status='rendering'
             """, job.id());
-        executeUpdate(connection, """
+        int updatedVersion = executeUpdate(connection, """
             update document_versions set status='conversion_review', web_content_sha256=?,
-              row_version=row_version+1, updated_at=now() where id=?
+              row_version=row_version+1, updated_at=now() where id=? and status='conversion'
             """, webHash, job.versionId());
-        executeUpdate(connection, """
+        int updatedDocument = executeUpdate(connection, """
             update documents set status='conversion_review', row_version=row_version+1,
-              updated_at=now() where id=?
-            """, job.documentId());
+              updated_at=now() where id=? and status in ('file_check','conversion')
+                and not exists (
+                  select 1 from document_versions newer
+                  where newer.document_id=documents.id
+                    and newer.id<>? and newer.version_number>(
+                      select version_number from document_versions where id=?
+                    )
+                )
+            """, job.documentId(), job.versionId(), job.versionId());
+        if (updatedVersion != 1 || updatedDocument != 1) {
+          throw new SQLException("Stav dokumentu se během dokončení převodu změnil.");
+        }
+        appendSystemAudit(connection, job, conversion.result().blocks().size());
         UUID outboxKey = UUID.nameUUIDFromBytes((job.id() + ":completed").getBytes(StandardCharsets.UTF_8));
         try (var outbox = connection.prepareStatement("""
             insert into outbox_events(event_type,aggregate_type,aggregate_id,payload,idempotency_key)
@@ -307,12 +340,13 @@ public final class JdbcConversionRepository implements ConversionProcessor.Repos
       }
       UUID revisionId = UUID.nameUUIDFromBytes(
           (job.versionId() + ":" + block.blockUid()).getBytes(StandardCharsets.UTF_8));
+      boolean inserted;
       try (var statement = connection.prepareStatement("""
           insert into block_revisions(
             block_revision_id,block_uid,document_version_id,block_order,block_type,
             structured_content,plain_text,normalized_hash,commentable,parser_version,revision_origin)
           values (?,?,?,?,?,?::jsonb,?,?,?,?, 'converted')
-          on conflict (document_version_id,block_uid) do nothing
+          on conflict do nothing
           """)) {
         statement.setObject(1, revisionId);
         statement.setObject(2, blockUid);
@@ -324,7 +358,25 @@ public final class JdbcConversionRepository implements ConversionProcessor.Repos
         statement.setString(8, block.normalizedHash());
         statement.setBoolean(9, block.commentable());
         statement.setString(10, job.profileVersion());
-        statement.executeUpdate();
+        inserted = statement.executeUpdate() == 1;
+      }
+      // A retry must preserve the current revision, especially an administrator's correction.
+      // Assets belong only to a revision inserted by this conversion attempt.
+      if (!inserted) {
+        try (var current = connection.prepareStatement("""
+            select revision_origin,normalized_hash from block_revisions
+            where document_version_id=? and block_uid=? and superseded_at is null
+            """)) {
+          current.setObject(1, job.versionId());
+          current.setObject(2, blockUid);
+          try (var row = current.executeQuery()) {
+            if (!row.next() || !"admin_structure_edit".equals(row.getString("revision_origin"))
+                || !block.normalizedHash().equals(row.getString("normalized_hash"))) {
+              throw new SQLException("Konflikt při ukládání převedeného bloku.");
+            }
+          }
+        }
+        continue;
       }
       if (table != null && "image_with_attachment".equals(table.recommendation().code())) {
         int currentTableIndex = tableIndex - 1;
@@ -403,15 +455,60 @@ public final class JdbcConversionRepository implements ConversionProcessor.Repos
     }
   }
 
-  private static void executeUpdate(
+  private static int executeUpdate(
       java.sql.Connection connection, String sql, Object... values) throws SQLException {
     try (var statement = connection.prepareStatement(sql)) {
       for (int index = 0; index < values.length; index += 1) statement.setObject(index + 1, values[index]);
-      if (statement.executeUpdate() != 1) throw new SQLException("Atomický přechod převodu selhal.");
+      int updated = statement.executeUpdate();
+      if (updated != 1) throw new SQLException("Atomický přechod převodu selhal.");
+      return updated;
     }
   }
 
   private static String sha256(byte[] value) throws Exception {
     return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
+  }
+
+  private static void appendSystemAudit(
+      java.sql.Connection connection, ConversionProcessor.Job job, int blockCount) throws Exception {
+    try (var advisory = connection.prepareStatement(
+        "select pg_advisory_xact_lock(hashtext('audit_events'))")) {
+      advisory.execute();
+    }
+    String previousHash = null;
+    try (var previous = connection.prepareStatement(
+        "select event_hash from audit_events order by created_at desc,id desc limit 1");
+        var row = previous.executeQuery()) {
+      if (row.next()) previousHash = row.getString("event_hash");
+    }
+    Map<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("blockCount", blockCount);
+    metadata.put("jobId", job.id().toString());
+    metadata.put("versionId", job.versionId().toString());
+    Map<String, Object> event = new LinkedHashMap<>();
+    event.put("action", "conversion.completed");
+    event.put("actorRole", null);
+    event.put("actorUserId", null);
+    event.put("correlationId", job.correlationId().toString());
+    event.put("metadata", metadata);
+    event.put("outcome", "allowed");
+    event.put("previousHash", previousHash);
+    event.put("targetId", job.versionId().toString());
+    event.put("targetType", "document_version");
+    String eventHash = sha256(((previousHash == null ? "" : previousHash)
+        + JSON.writeValueAsString(event)).getBytes(StandardCharsets.UTF_8));
+    try (var insert = connection.prepareStatement("""
+        insert into audit_events(
+          actor_user_id,actor_role,action,target_type,target_id,outcome,correlation_id,
+          metadata,previous_hash,event_hash)
+        values (null,null,'conversion.completed','document_version',?,'allowed',?,?::jsonb,?,?)
+        """)) {
+      insert.setObject(1, job.versionId());
+      insert.setObject(2, job.correlationId());
+      insert.setString(3, JSON.writeValueAsString(metadata));
+      insert.setString(4, previousHash);
+      insert.setString(5, eventHash);
+      insert.executeUpdate();
+    }
   }
 }

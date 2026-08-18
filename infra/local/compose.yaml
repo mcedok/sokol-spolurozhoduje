@@ -16,7 +16,7 @@ services:
       retries: 20
     volumes:
       - sokol_pg_data:/var/lib/postgresql/data
-    networks: [conversion-backend]
+    networks: [conversion-backend, test-host]
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:3.36.0
@@ -30,7 +30,7 @@ services:
       retries: 20
     volumes:
       - sokol_azurite_data:/data
-    networks: [conversion-backend]
+    networks: [conversion-backend, test-host]
 
   clamav:
     image: clamav/clamav:stable-debian
@@ -41,7 +41,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-    networks: [conversion-backend]
+    networks: [conversion-backend, test-host]
 
   conversion-worker:
     profiles: ["conversion"]
@@ -82,3 +82,4 @@ volumes:
 networks:
   conversion-backend:
     internal: true
+  test-host:

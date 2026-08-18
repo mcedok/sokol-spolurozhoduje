@@ -3,8 +3,10 @@ package cz.sokol.conversion;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.azure.storage.blob.BlobServiceClientBuilder;
+import cz.sokol.conversion.model.ConversionResult;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,6 +16,8 @@ import java.sql.Connection;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -191,6 +195,192 @@ class WorkerEndToEndTest {
       original.deleteIfExists();
       reference.deleteIfExists();
       tableImage.deleteIfExists();
+    }
+  }
+
+  @Test
+  void conversionRetryPreservesAnAdministratorsCurrentBlockRevision() throws Exception {
+    PGSimpleDataSource dataSource = dataSource();
+    UUID userId = UUID.randomUUID();
+    UUID documentId = UUID.randomUUID();
+    UUID fileId = UUID.randomUUID();
+    UUID versionId = UUID.randomUUID();
+    UUID jobId = UUID.randomUUID();
+    UUID blockUid = UUID.randomUUID();
+    UUID newerVersionId = UUID.randomUUID();
+    String sha256 = "a".repeat(64);
+    String sourceKey = documentId + "/" + versionId + "/source.docx";
+    UUID convertedRevisionId = UUID.nameUUIDFromBytes(
+        (versionId + ":" + blockUid).getBytes(StandardCharsets.UTF_8));
+    UUID adminRevisionId = UUID.randomUUID();
+    try {
+      seed(dataSource, userId, documentId, fileId, versionId, jobId,
+          sourceKey, "etag", sha256, 42);
+      try (Connection connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+        statement.executeUpdate("update conversion_jobs set status='rendering', lease_owner='retry-worker'"
+            + " where id='" + jobId + "'");
+        statement.executeUpdate("update document_versions set status='conversion' where id='" + versionId + "'");
+        statement.executeUpdate("update documents set status='conversion' where id='" + documentId + "'");
+        statement.executeUpdate("insert into document_blocks(block_uid,document_id) values ('"
+            + blockUid + "','" + documentId + "')");
+        statement.executeUpdate("insert into block_revisions(block_revision_id,block_uid,"
+            + "document_version_id,block_order,block_type,structured_content,plain_text,"
+            + "normalized_hash,parser_version,revision_origin,superseded_at) values ('"
+            + convertedRevisionId + "','" + blockUid + "','" + versionId
+            + "',0,'paragraph','{}','Původní text','" + "b".repeat(64)
+            + "','docx-web-v1','converted',now())");
+        statement.executeUpdate("insert into block_revisions(block_revision_id,block_uid,"
+            + "document_version_id,block_order,block_type,structured_content,plain_text,"
+            + "normalized_hash,parser_version,revision_origin,created_by_user_id) values ('"
+            + adminRevisionId + "','" + blockUid + "','" + versionId
+            + "',0,'heading','{}','Původní text','" + "b".repeat(64)
+            + "','docx-web-v1','admin_structure_edit','" + userId + "')");
+      }
+      var block = new ConversionResult.Block(
+          blockUid.toString(), "paragraph", "Původní text", "b".repeat(64), true,
+          List.of(), null, null, Map.of(), List.of());
+      var result = new ConversionResult("docx-web-v1", sha256, List.of(block), List.of());
+      var completion = new ConversionProcessor.CompletedConversion(
+          result,
+          new ConversionProcessor.TableReview(List.of(), List.of()),
+          new ConversionProcessor.Derivative(
+              "derivatives", documentId + "/" + versionId + "/reference/retry.pdf",
+              "c".repeat(64), "etag", 12, "application/pdf"),
+          List.of());
+      var job = new ConversionProcessor.Job(
+          jobId, documentId, versionId, fileId, "originals", sourceKey, sha256, "etag",
+          UUID.randomUUID(), userId, "docx-web-v1", Instant.now(), "retry-worker");
+
+      new JdbcConversionRepository(dataSource).completeConversion(job, completion);
+
+      try (Connection connection = dataSource.getConnection(); var statement = connection.prepareStatement("""
+          select block_revision_id, block_type from block_revisions
+          where document_version_id=? and superseded_at is null
+          """)) {
+        statement.setObject(1, versionId);
+        try (var rows = statement.executeQuery()) {
+          assertTrue(rows.next());
+          assertEquals(adminRevisionId, rows.getObject("block_revision_id", UUID.class));
+          assertEquals("heading", rows.getString("block_type"));
+          assertFalse(rows.next());
+        }
+      }
+      try (Connection connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+          "select count(*) from audit_events where target_id=? and action='conversion.completed'")) {
+        statement.setObject(1, versionId);
+        try (var rows = statement.executeQuery()) {
+          assertTrue(rows.next());
+          assertEquals(1, rows.getInt(1));
+        }
+      }
+      try (Connection connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+        statement.executeUpdate("insert into document_versions(id,document_id,version_number,status,"
+            + "original_file_id,created_by_user_id) values ('" + newerVersionId + "','" + documentId
+            + "',2,'file_check','" + fileId + "','" + userId + "')");
+        statement.executeUpdate("update document_versions set status='conversion' where id='" + versionId + "'");
+        statement.executeUpdate("update documents set status='file_check' where id='" + documentId + "'");
+        statement.executeUpdate("update conversion_jobs set status='rendering',lease_owner='retry-worker'"
+            + " where id='" + jobId + "'");
+      }
+      assertThrows(java.sql.SQLException.class,
+          () -> new JdbcConversionRepository(dataSource).completeConversion(job, completion));
+      try (Connection connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+          "select status from documents where id=?")) {
+        statement.setObject(1, documentId);
+        try (var rows = statement.executeQuery()) {
+          assertTrue(rows.next());
+          assertEquals("file_check", rows.getString("status"));
+        }
+      }
+    } finally {
+      try (Connection connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+        statement.executeUpdate("delete from document_versions where id='" + newerVersionId + "'");
+      }
+      cleanupConversion(dataSource, userId, documentId, fileId, versionId, jobId);
+    }
+  }
+
+  @Test
+  void retryAfterTransientRenderFailureKeepsTheArchivedOriginal() throws Exception {
+    PGSimpleDataSource dataSource = dataSource();
+    UUID userId = UUID.randomUUID();
+    UUID documentId = UUID.randomUUID();
+    UUID fileId = UUID.randomUUID();
+    UUID versionId = UUID.randomUUID();
+    UUID jobId = UUID.randomUUID();
+    byte[] content = Files.readAllBytes(Path.of(System.getenv().getOrDefault(
+        "SOKOL_FIXTURE_ROOT", "../test/fixtures/docx")).resolve("valid-minimal.docx"));
+    String sha256 = HexFormat.of().formatHex(
+        MessageDigest.getInstance("SHA-256").digest(content));
+    String sourceKey = documentId + "/" + versionId + "/" + fileId + ".docx";
+    String originalKey = documentId + "/" + versionId + "/" + sha256 + ".docx";
+    String pdfSha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+        .digest("%PDF-retry".getBytes(StandardCharsets.UTF_8)));
+    String referenceKey = documentId + "/" + versionId + "/reference/" + pdfSha + ".pdf";
+    var service = new BlobServiceClientBuilder().connectionString(STORAGE).buildClient();
+    service.getBlobContainerClient("quarantine").createIfNotExists();
+    service.getBlobContainerClient("originals").createIfNotExists();
+    service.getBlobContainerClient("derivatives").createIfNotExists();
+    var source = service.getBlobContainerClient("quarantine").getBlobClient(sourceKey);
+    var original = service.getBlobContainerClient("originals").getBlobClient(originalKey);
+    var reference = service.getBlobContainerClient("derivatives").getBlobClient(referenceKey);
+    source.upload(new ByteArrayInputStream(content), content.length, true);
+    try {
+      seed(dataSource, userId, documentId, fileId, versionId, jobId,
+          sourceKey, source.getProperties().getETag(), sha256, content.length);
+      var leases = new JobLeaseRepository(dataSource, Duration.ofMinutes(2));
+      assertEquals(jobId, leases.leaseNext("retry-e2e-worker", Instant.now()).orElseThrow().id());
+      var processor = new ConversionProcessor(
+          new JdbcConversionRepository(dataSource), new AzureBlobStore(STORAGE),
+          contentStream -> ClamAvClient.AvStatus.CLEAN);
+      var failingRenderer = new LibreOfficeRenderer(command -> {
+        throw new java.io.IOException("TRANSIENT_RENDER_FAILURE");
+      });
+      assertThrows(java.io.IOException.class, () -> processor.processLeasedJob(
+          jobId, temporaryDirectory.resolve("failed-retry"), failingRenderer,
+          (docx, blocks, directory) -> new ConversionProcessor.GeneratedTableArtifacts(
+              List.of(), java.util.Set.of())));
+      assertTrue(original.exists());
+      assertFalse(source.exists());
+
+      try (Connection connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+        statement.executeUpdate("update conversion_jobs set status='failed',current_step='failed',"
+            + "error_code='TRANSIENT_RENDER_FAILURE',lease_owner=null,lease_expires_at=null where id='"
+            + jobId + "'");
+        statement.executeUpdate("update conversion_jobs set status='queued',current_step='file_check',"
+            + "error_code=null,next_attempt_at=now(),started_at=null,completed_at=null where id='"
+            + jobId + "'");
+        statement.executeUpdate("update document_versions set status='file_check',row_version=row_version+1"
+            + " where id='" + versionId + "'");
+        statement.executeUpdate("update documents set status='file_check',row_version=row_version+1"
+            + " where id='" + documentId + "'");
+      }
+      assertEquals(jobId, leases.leaseNext("retry-e2e-worker", Instant.now()).orElseThrow().id());
+      var successfulRenderer = new LibreOfficeRenderer(command -> {
+        Files.write(command.workingDirectory().resolve("source.pdf"),
+            "%PDF-retry".getBytes(StandardCharsets.UTF_8));
+        return new LibreOfficeRenderer.ProcessResult(0, false, "converted");
+      });
+      processor.processLeasedJob(
+          jobId, temporaryDirectory.resolve("successful-retry"), successfulRenderer,
+          (docx, blocks, directory) -> new ConversionProcessor.GeneratedTableArtifacts(
+              List.of(), java.util.Set.of()));
+
+      assertTrue(original.exists());
+      assertTrue(reference.exists());
+      try (Connection connection = dataSource.getConnection(); var statement = connection.prepareStatement(
+          "select status from conversion_jobs where id=?")) {
+        statement.setObject(1, jobId);
+        try (var rows = statement.executeQuery()) {
+          assertTrue(rows.next());
+          assertEquals("completed", rows.getString("status"));
+        }
+      }
+    } finally {
+      cleanupConversion(dataSource, userId, documentId, fileId, versionId, jobId);
+      source.deleteIfExists();
+      original.deleteIfExists();
+      reference.deleteIfExists();
     }
   }
 

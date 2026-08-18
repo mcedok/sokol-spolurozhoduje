@@ -9,6 +9,7 @@ import { createDocumentService } from "./modules/documents/document-service";
 import { createAzureBlobStorage } from "./modules/files/azure-blob-storage";
 import { fileConfig } from "./modules/files/file-config";
 import { createUploadService } from "./modules/files/upload-service";
+import { createConversionService } from "./modules/conversion/conversion-service";
 
 export interface IdentityRuntime {
   sql: Sql;
@@ -18,6 +19,7 @@ export interface IdentityRuntime {
   documents: ReturnType<typeof createDocumentService>;
   files: ReturnType<typeof createAzureBlobStorage>;
   uploads: ReturnType<typeof createUploadService>;
+  conversions: ReturnType<typeof createConversionService>;
 }
 
 let identityRuntime: IdentityRuntime | undefined;
@@ -40,6 +42,7 @@ export function getIdentityRuntime(): IdentityRuntime {
     documents: createDocumentService({ sql }),
     files,
     uploads: createUploadService({ sql, storage: files, config: fileConfig() }),
+    conversions: createConversionService({ sql }),
   };
   return identityRuntime;
 }
