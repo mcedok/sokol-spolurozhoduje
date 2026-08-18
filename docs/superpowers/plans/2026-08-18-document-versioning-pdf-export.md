@@ -55,7 +55,7 @@
 ### Task 3: Rozhodnutí nejasných mapování a projekce vláken
 
 **Files:**
-- Modify: `server/db/migrations/0006_block_mappings.sql`
+- Create: `server/db/migrations/0007_thread_version_projections.sql`
 - Modify: `server/modules/versioning/versioning-repository.ts`
 - Modify: `server/modules/versioning/versioning-service.ts`
 - Create: `app/api/document-versions/[versionId]/mappings/route.ts`
@@ -87,7 +87,7 @@
 **Files:**
 - Create: `contracts/exports.ts`
 - Modify: `contracts/index.ts`
-- Create: `server/db/migrations/0007_pdf_exports.sql`
+- Create: `server/db/migrations/0008_pdf_exports.sql`
 - Create: `server/modules/exports/export-snapshot.ts`
 - Create: `server/modules/exports/export-repository.ts`
 - Create: `server/modules/exports/export-service.ts`

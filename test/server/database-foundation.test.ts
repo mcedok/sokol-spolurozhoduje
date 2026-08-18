@@ -4,7 +4,7 @@ import { migrateTestDatabase, resetPublicSchema, testSql } from "./db-test-conte
 beforeAll(async () => {
   await resetPublicSchema();
   await migrateTestDatabase();
-});
+}, 30_000);
 afterAll(() => testSql.end());
 
 describe("foundation migration", () => {

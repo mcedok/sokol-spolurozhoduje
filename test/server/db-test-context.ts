@@ -18,6 +18,8 @@ export async function migrateTestDatabase(): Promise<void> {
 export async function resetTestDatabase(): Promise<void> {
   await testSql.unsafe(`
     truncate table
+      block_mappings,
+      block_mapping_runs,
       settlement_block_links,
       settlement_revisions,
       settlements,
