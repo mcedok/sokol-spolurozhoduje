@@ -4,4 +4,5 @@ export * from "./documents";
 export * from "./document-conversion";
 export * from "./comments";
 export * from "./document-versioning";
+export * from "./exports";
 export * from "./api";
