@@ -1,9 +1,14 @@
 package cz.sokol.conversion;
 
+import cz.sokol.conversion.pdf.JdbcPdfExportRepository;
+import cz.sokol.conversion.pdf.PdfAValidator;
+import cz.sokol.conversion.pdf.PdfExportProcessor;
+import cz.sokol.conversion.pdf.PdfExportRenderer;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +30,13 @@ public final class WorkerMain {
         new JdbcConversionRepository(dataSource),
         new AzureBlobStore(config.storageConnectionString()),
         new ClamAvClient(config.clamAvHost(), config.clamAvPort(), Duration.ofMinutes(2)));
+    PdfExportProcessor pdfExports = new PdfExportProcessor(
+        new JdbcPdfExportRepository(dataSource, Duration.ofSeconds(config.leaseSeconds())),
+        new AzureBlobStore(config.storageConnectionString()),
+        new PdfExportRenderer(Path.of(config.fontRoot()))::render,
+        new PdfAValidator(
+            List.of(config.veraPdfCommand()),
+            Duration.ofSeconds(config.pdfValidationTimeoutSeconds()))::validate);
     QuarantineRetention retention = new QuarantineRetention(
         new JdbcQuarantineRetentionRepository(dataSource),
         new AzureBlobStore(config.storageConnectionString()),
@@ -41,9 +53,16 @@ public final class WorkerMain {
         }
         nextRetention = now.plus(Duration.ofHours(1));
       }
+      boolean pdfProcessed = false;
+      try {
+        pdfProcessed = pdfExports.processNext(
+            Path.of(System.getenv().getOrDefault("TMPDIR", "/tmp/conversion"), "pdf"));
+      } catch (Exception error) {
+        LOGGER.error("PDF exportní úloha selhala.", error);
+      }
       var leased = leases.leaseNext(config.workerId(), now);
       if (leased.isEmpty()) {
-        Thread.sleep(Duration.ofSeconds(2));
+        if (!pdfProcessed) Thread.sleep(Duration.ofSeconds(2));
         continue;
       }
       try {

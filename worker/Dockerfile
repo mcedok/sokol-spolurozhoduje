@@ -5,21 +5,29 @@ RUN mvn -q -DskipTests dependency:go-offline
 COPY worker/src ./src
 RUN mvn -q -DskipTests package
 
+FROM ghcr.io/verapdf/cli:latest AS verapdf
+
 FROM build AS test
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 COPY test/fixtures/docx /fixtures
 COPY contracts/schemas /schemas
-ENV SOKOL_FIXTURE_ROOT=/fixtures SOKOL_SCHEMA_ROOT=/schemas
+COPY public/fonts /fonts
+ENV SOKOL_FIXTURE_ROOT=/fixtures SOKOL_SCHEMA_ROOT=/schemas SOKOL_FONT_ROOT=/fonts
 RUN mvn -q test
 
 FROM eclipse-temurin:21-jre-noble AS runtime
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      libreoffice-core libreoffice-writer poppler-utils \
+      libreoffice-core libreoffice-writer poppler-utils fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin worker \
     && install -d -o worker -g worker -m 0700 /tmp/conversion
 WORKDIR /app
 COPY --from=build /workspace/target/document-conversion-worker-1.0.0-SNAPSHOT.jar /app/worker.jar
+COPY --from=verapdf /opt/verapdf /opt/verapdf
+COPY public/fonts /app/fonts
 USER 10001:10001
 ENV HOME=/home/worker \
     TMPDIR=/tmp/conversion \

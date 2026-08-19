@@ -95,6 +95,8 @@ export const pdfExportJobSchema = z.object({
   rowVersion: z.number().int().positive(),
   createdAt: z.string().datetime(),
   completedAt: z.string().datetime().nullable(),
+  outputFileId: z.string().uuid().nullable(),
+  errorCode: z.string().nullable(),
 }).strict();
 
 export type PdfExportFilters = z.infer<typeof pdfExportFiltersSchema>;
