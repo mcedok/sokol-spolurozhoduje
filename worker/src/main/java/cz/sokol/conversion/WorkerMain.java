@@ -4,6 +4,9 @@ import cz.sokol.conversion.pdf.JdbcPdfExportRepository;
 import cz.sokol.conversion.pdf.PdfAValidator;
 import cz.sokol.conversion.pdf.PdfExportProcessor;
 import cz.sokol.conversion.pdf.PdfExportRenderer;
+import cz.sokol.conversion.xlsx.JdbcXlsxExportRepository;
+import cz.sokol.conversion.xlsx.XlsxExportProcessor;
+import cz.sokol.conversion.xlsx.XlsxWorkbookRenderer;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -37,6 +40,12 @@ public final class WorkerMain {
         new PdfAValidator(
             List.of(config.veraPdfCommand()),
             Duration.ofSeconds(config.pdfValidationTimeoutSeconds()))::validate);
+    XlsxExportProcessor xlsxExports = new XlsxExportProcessor(
+        new JdbcXlsxExportRepository(dataSource, Duration.ofSeconds(config.leaseSeconds())),
+        new AzureBlobStore(config.storageConnectionString()),
+        new XlsxWorkbookRenderer()::render,
+        System.getenv().getOrDefault("XLSX_MANIFEST_SECRET", "local-development-secret")
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8));
     QuarantineRetention retention = new QuarantineRetention(
         new JdbcQuarantineRetentionRepository(dataSource),
         new AzureBlobStore(config.storageConnectionString()),
@@ -59,6 +68,12 @@ public final class WorkerMain {
             Path.of(System.getenv().getOrDefault("TMPDIR", "/tmp/conversion"), "pdf"));
       } catch (Exception error) {
         LOGGER.error("PDF exportní úloha selhala.", error);
+      }
+      try {
+        xlsxExports.processNext(
+            Path.of(System.getenv().getOrDefault("TMPDIR", "/tmp/conversion"), "xlsx"));
+      } catch (Exception error) {
+        LOGGER.error("XLSX exportní úloha selhala.", error);
       }
       var leased = leases.leaseNext(config.workerId(), now);
       if (leased.isEmpty()) {
