@@ -1,6 +1,7 @@
 import { createElement as h, useEffect, useState } from "react";
 import { DocumentConversionWizard } from "./DocumentConversionWizard.js";
 import { PdfExportPanel } from "./PdfExportPanel.js";
+import { XlsxWorkingPanel } from "./XlsxWorkingPanel.js";
 
 const STATUS_OPTIONS = [
   "Koncept",
@@ -224,6 +225,11 @@ export function NormAdministration({ norms = [], selectedNorm, currentUser, acti
             h("p", null, "Produkční převod dokumentu je dostupný po připojení k serveru."),
             ),
           h(PdfExportPanel, {
+            document: selectedNorm,
+            api: actions,
+            canManage: currentUser?.role === "admin" || currentUser?.role === "superadmin",
+          }),
+          h(XlsxWorkingPanel, {
             document: selectedNorm,
             api: actions,
             canManage: currentUser?.role === "admin" || currentUser?.role === "superadmin",

@@ -401,5 +401,31 @@ export function createXlsxImportService({ sql }: { sql: Sql }) {
         return { rowId, decision: parsed, classification: nextClassification };
       });
     },
+
+    async applyConflictDecisions(actor: Actor | null, batchId: string, correlationId = crypto.randomUUID()) {
+      const access = await requireBatchAccess(actor, batchId, correlationId);
+      if (!actor) throw new AuthError("UNAUTHENTICATED", "Přihlášení je vyžadováno.", 401);
+      const [pending] = await sql<{ count: number }[]>`
+        select count(*)::int as count from xlsx_import_rows where batch_id=${batchId} and classification='conflict'
+      `;
+      if (pending.count > 0) throw new AuthError("CONFLICT_DECISIONS_REQUIRED", "Nejprve rozhodněte všechny konfliktní řádky.", 409);
+      return this.applySafeRows(actor, batchId, correlationId);
+    },
+
+    async cancel(actor: Actor | null, batchId: string, correlationId = crypto.randomUUID()) {
+      const access = await requireBatchAccess(actor, batchId, correlationId);
+      if (!actor) throw new AuthError("UNAUTHENTICATED", "Přihlášení je vyžadováno.", 401);
+      await withTransaction(sql, async (tx) => {
+        const [row] = await tx<{ status: XlsxImportBatch["status"] }[]>`
+          update xlsx_import_batches set status='cancelled', completed_at=coalesce(completed_at, now()), row_version=row_version+1, updated_at=now()
+          where id=${batchId} and status not in ('completed','cancelled') returning status
+        `;
+        if (!row) return;
+        await appendOutbox(tx, { eventType: "xlsx.import.cancelled", aggregateType: "xlsx_import_batch", aggregateId: batchId,
+          idempotencyKey: `${batchId}:cancelled`, payload: { documentId: access.documentId } });
+        await appendAudit(tx, { actor, action: "xlsx_import.cancelled", targetType: "xlsx_import_batch", targetId: batchId,
+          correlationId, metadata: { documentId: access.documentId } }, "allowed");
+      });
+    },
   };
 }

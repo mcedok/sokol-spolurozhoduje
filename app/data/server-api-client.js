@@ -227,6 +227,20 @@ export function createServerApiClient({
   const getPdfExport = (jobId) => request(`/api/export-jobs/${jobId}`);
   const getPdfExportDownloadLink = (jobId) =>
     request(`/api/export-jobs/${jobId}/download-link`);
+  const createXlsxExport = (documentId, documentVersionId) => request(`/api/documents/${documentId}/xlsx-exports`, {
+    method: "POST", body: { documentVersionId }, idempotencyKey: crypto.randomUUID(),
+  });
+  const getXlsxExport = (jobId) => request(`/api/xlsx-exports/${jobId}`);
+  const uploadXlsxImport = async (documentId, file, exportJobId) => {
+    const form = new FormData(); form.set("file", file); form.set("exportJobId", exportJobId || "");
+    const response = await fetchImpl(`/api/documents/${documentId}/xlsx-imports`, {
+      method: "POST", credentials: "same-origin", body: form,
+      headers: { "idempotency-key": crypto.randomUUID(), ...(readCsrf() ? { "x-csrf-token": readCsrf() } : {}) },
+    });
+    const payload = response.headers.get("content-type")?.includes("json") ? await response.json() : null;
+    if (!response.ok) throw Object.assign(new Error(payload?.detail || "Import se nepodařilo dokončit."), { code: payload?.code, status: response.status });
+    return payload;
+  };
 
   const auth = {
     backend: "server",
@@ -431,6 +445,9 @@ export function createServerApiClient({
     createPdfExport,
     getPdfExport,
     getPdfExportDownloadLink,
+    createXlsxExport,
+    getXlsxExport,
+    uploadXlsxImport,
     auth,
     normService,
     userService,
