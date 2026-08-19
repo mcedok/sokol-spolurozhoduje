@@ -23,3 +23,5 @@ Implementace balíčků 14–16 je v checkpoint commitech `53c693d`, `8fa9e4b`, 
 Export ukládá neměnný snapshot bez e-mailu a členského ID. Worker generuje chráněný `.xlsx` s manifestem, číselníky, validacemi a statistikou. Upload je omezen na `.xlsx`, 25 MiB a 1 000 řádků, ukládá se do karantény a kontroluje se ZIP/OOXML struktura. Třícestný náhled rozlišuje bezpečné změny a konflikty; konflikty se rozhodují po celých řádcích. Aplikace je transakční, zachovává settlement historii, zapisuje outbox a hashovaný audit. Administrátorské UI je napojené na export, upload, stav dávky a souhrn výsledků.
 
 Před produkčním nasazením je nutné v čistém CI/containeru zopakovat `pnpm typecheck`, `pnpm build`, databázovou migraci a browser smoke s reálným object storage/ClamAV.
+
+Poznámka k rozsahu tohoto checkpointu: Apache POI parser a PostgreSQL staging schéma jsou připravené, ale samostatný Java consumer události `xlsx.import.requested`, který parser spouští na pozadí a plní `xlsx_import_rows`, je další integrační krok před plnou bezobslužnou produkcí. API, bezpečnostní validace, merge/apply a UI hranice jsou již připravené.
