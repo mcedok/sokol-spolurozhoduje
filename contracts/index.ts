@@ -5,4 +5,5 @@ export * from "./document-conversion";
 export * from "./comments";
 export * from "./document-versioning";
 export * from "./exports";
+export * from "./xlsx";
 export * from "./api";
