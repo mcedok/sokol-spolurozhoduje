@@ -75,8 +75,53 @@ export const xlsxImportBatchSchema = z.object({
   completedAt: z.string().datetime().nullable(),
 }).strict();
 
+const xlsxSnapshotSettlementSchema = z.object({
+  id: z.string().uuid(),
+  rowVersion: z.number().int().positive(),
+  outcome: settlementOutcomeSchema,
+  statement: z.string().trim().min(1),
+  responsibleUserId: z.string().uuid(),
+  responsibleAdminName: z.string().trim().min(1),
+  declaredSettlementDate: z.string().date().nullable(),
+  targetVersionNumber: z.number().int().positive().nullable(),
+}).strict();
+
+const xlsxSnapshotCommentSchema = z.object({
+  id: z.string().uuid(),
+  publicId: z.string().regex(/^PRIP-\d{4}-\d{6,}$/),
+  blockOrder: z.number().int().nonnegative(),
+  blockUid: z.string().uuid(),
+  blockText: z.string(),
+  authorName: z.string().trim().min(1),
+  organizationName: z.string().trim().min(1),
+  createdAt: z.string().datetime(),
+  body: z.string().trim().min(1),
+  base: z.object({
+    type: commentTypeSchema,
+    priority: commentPrioritySchema,
+    status: commentStatusSchema,
+    settlement: xlsxSnapshotSettlementSchema.nullable(),
+  }).strict(),
+  commentRowVersion: z.number().int().positive(),
+}).strict();
+
+export const xlsxExportSnapshotSchema = z.object({
+  schemaVersion: z.literal("xlsx-working-v1"),
+  generatedAt: z.string().datetime(),
+  document: z.object({
+    id: z.string().uuid(),
+    versionId: z.string().uuid(),
+    number: z.string().min(1),
+    title: z.string().min(1),
+    versionNumber: z.number().int().positive(),
+  }).strict(),
+  rowCount: z.number().int().nonnegative().max(1000),
+  comments: z.array(xlsxSnapshotCommentSchema),
+}).strict();
+
 export type XlsxRowClassification = z.infer<typeof xlsxRowClassificationSchema>;
 export type XlsxConflictDecision = z.infer<typeof xlsxConflictDecisionSchema>;
 export type XlsxEditableRow = z.infer<typeof xlsxEditableRowSchema>;
 export type XlsxExportJob = z.infer<typeof xlsxExportJobSchema>;
 export type XlsxImportBatch = z.infer<typeof xlsxImportBatchSchema>;
+export type XlsxExportSnapshot = z.infer<typeof xlsxExportSnapshotSchema>;

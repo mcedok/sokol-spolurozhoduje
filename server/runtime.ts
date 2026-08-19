@@ -13,6 +13,7 @@ import { createConversionService } from "./modules/conversion/conversion-service
 import { createFileDownloadService } from "./modules/files/file-download-service";
 import { createVersioningService } from "./modules/versioning/versioning-service";
 import { createExportService } from "./modules/exports/export-service";
+import { createXlsxExportService } from "./modules/xlsx/xlsx-export-service";
 
 export interface IdentityRuntime {
   sql: Sql;
@@ -26,6 +27,7 @@ export interface IdentityRuntime {
   downloads: ReturnType<typeof createFileDownloadService>;
   versioning: ReturnType<typeof createVersioningService>;
   exports: ReturnType<typeof createExportService>;
+  xlsxExports: ReturnType<typeof createXlsxExportService>;
 }
 
 let identityRuntime: IdentityRuntime | undefined;
@@ -57,6 +59,7 @@ export function getIdentityRuntime(): IdentityRuntime {
     }),
     versioning: createVersioningService({ sql }),
     exports: createExportService({ sql }),
+    xlsxExports: createXlsxExportService({ sql }),
   };
   return identityRuntime;
 }
