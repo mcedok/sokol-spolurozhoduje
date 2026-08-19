@@ -54,6 +54,7 @@ function adaptDocument(document) {
     submissions: [],
     needVotes: { yes: 0, no: 0 },
     file: null,
+    latestReadyVersionId: document.latestReadyVersionId || null,
   };
 }
 
@@ -210,6 +211,22 @@ export function createServerApiClient({
       idempotencyKey: input.idempotencyKey,
     },
   );
+  const createPdfExport = (documentId, input) => request(
+    `/api/documents/${documentId}/exports`,
+    {
+      method: "POST",
+      body: {
+        documentVersionId: input.documentVersionId,
+        visibility: input.visibility,
+        filters: input.filters,
+        options: input.options,
+      },
+      idempotencyKey: input.idempotencyKey,
+    },
+  );
+  const getPdfExport = (jobId) => request(`/api/export-jobs/${jobId}`);
+  const getPdfExportDownloadLink = (jobId) =>
+    request(`/api/export-jobs/${jobId}/download-link`);
 
   const auth = {
     backend: "server",
@@ -411,6 +428,9 @@ export function createServerApiClient({
     generateVersionMappings,
     getVersionMappings,
     decideVersionMapping,
+    createPdfExport,
+    getPdfExport,
+    getPdfExportDownloadLink,
     auth,
     normService,
     userService,

@@ -299,6 +299,9 @@ export function useAppController({ createServices = createDefaultServices } = {}
       decideConversionFinding: invoke("decideConversionFinding"),
       completeConversionReview: invoke("completeConversionReview"),
       createFileDownloadLink: invoke("createFileDownloadLink"),
+      createPdfExport: invoke("createPdfExport"),
+      getPdfExport: invoke("getPdfExport"),
+      getPdfExportDownloadLink: invoke("getPdfExportDownloadLink"),
       refresh,
     };
   }, [refresh, services?.backend]);

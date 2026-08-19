@@ -35,7 +35,7 @@ export function createFileDownloadService({
       const [file] = await sql<{
         id: string;
         owner_admin_id: string;
-        purpose: "original_docx" | "reference_render" | "table_image" | "attachment";
+        purpose: "original_docx" | "reference_render" | "table_image" | "attachment" | "pdf_export";
         container: ObjectContainer;
         object_key: string;
         av_status: string;
@@ -92,7 +92,7 @@ export function createFileDownloadService({
         );
       }
       if (![
-        "original_docx", "reference_render", "table_image", "attachment",
+        "original_docx", "reference_render", "table_image", "attachment", "pdf_export",
       ].includes(file.purpose)) {
         throw new AuthError("FILE_PURPOSE_NOT_DOWNLOADABLE", "Tento typ souboru nelze stáhnout.", 403);
       }

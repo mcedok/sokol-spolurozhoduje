@@ -20,6 +20,7 @@ export interface DocumentRow {
   row_version: number;
   created_at: Date;
   updated_at: Date;
+  latest_ready_version_id: string | null;
 }
 
 function publicView(row: DocumentRow): PublicDocumentSummary {
@@ -44,6 +45,7 @@ export function adminView(row: DocumentRow): DocumentAdminView {
     ownerAdminId: row.owner_admin_id,
     closureReason: row.closure_reason,
     rowVersion: row.row_version,
+    latestReadyVersionId: row.latest_ready_version_id,
   };
 }
 
@@ -53,7 +55,10 @@ const COLUMNS = `
   concat_ws(' ', owner.first_name, owner.last_name) as responsible_admin_name,
   documents.status, documents.comments_open, documents.visibility_mode,
   documents.four_eyes_required, documents.closure_reason, documents.row_version,
-  documents.created_at, documents.updated_at
+  documents.created_at, documents.updated_at,
+  (select version.id from document_versions version
+    where version.document_id = documents.id and version.status = 'ready'
+    order by version.version_number desc limit 1) as latest_ready_version_id
 `;
 
 export async function findDocumentRow(sql: Sql, documentId: string): Promise<DocumentRow | null> {

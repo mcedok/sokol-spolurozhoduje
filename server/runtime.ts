@@ -12,6 +12,7 @@ import { createUploadService } from "./modules/files/upload-service";
 import { createConversionService } from "./modules/conversion/conversion-service";
 import { createFileDownloadService } from "./modules/files/file-download-service";
 import { createVersioningService } from "./modules/versioning/versioning-service";
+import { createExportService } from "./modules/exports/export-service";
 
 export interface IdentityRuntime {
   sql: Sql;
@@ -24,6 +25,7 @@ export interface IdentityRuntime {
   conversions: ReturnType<typeof createConversionService>;
   downloads: ReturnType<typeof createFileDownloadService>;
   versioning: ReturnType<typeof createVersioningService>;
+  exports: ReturnType<typeof createExportService>;
 }
 
 let identityRuntime: IdentityRuntime | undefined;
@@ -54,6 +56,7 @@ export function getIdentityRuntime(): IdentityRuntime {
       ttlSeconds: config.readUrlTtlSeconds,
     }),
     versioning: createVersioningService({ sql }),
+    exports: createExportService({ sql }),
   };
   return identityRuntime;
 }

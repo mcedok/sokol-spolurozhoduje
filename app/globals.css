@@ -430,6 +430,23 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { border-color
   .memberProfileFacts div:last-child { border-bottom: 0; }
 }
 
+.pdfExportPanel { display: grid; gap: 1rem; }
+.pdfExportForm { display: grid; gap: 1rem; }
+.pdfExportForm fieldset { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; border: 1px solid #d7d9dc; border-radius: .5rem; padding: .9rem; }
+.pdfExportForm legend { padding: 0 .35rem; font-weight: 700; }
+.pdfExportForm label { display: inline-flex; align-items: center; gap: .35rem; min-height: 44px; }
+.pdfExportForm input { width: 1.25rem; height: 1.25rem; }
+.pdfExportFilters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+.pdfExportFilters > p { grid-column: 1 / -1; margin: 0; }
+.pdfExportStatus { padding: 1rem; border-left: 4px solid #c8192e; background: #f5f5f5; }
+.pdfExportStatus .primaryButton { display: inline-flex; align-items: center; min-height: 44px; }
+
+@media (max-width: 640px) {
+  .pdfExportForm fieldset { flex-direction: column; }
+  .pdfExportFilters { grid-template-columns: 1fr; }
+  .pdfExportForm > button, .pdfExportStatus > button, .pdfExportStatus .primaryButton { width: 100%; justify-content: center; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
 }

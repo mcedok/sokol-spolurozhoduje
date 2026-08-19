@@ -16,6 +16,8 @@ interface ExportJobRow {
   row_version: number;
   created_at: Date;
   completed_at: Date | null;
+  output_file_id: string | null;
+  error_code: string | null;
 }
 
 function adaptJob(row: ExportJobRow): PdfExportJob {
@@ -29,6 +31,8 @@ function adaptJob(row: ExportJobRow): PdfExportJob {
     rowVersion: row.row_version,
     createdAt: row.created_at.toISOString(),
     completedAt: row.completed_at?.toISOString() ?? null,
+    outputFileId: row.output_file_id,
+    errorCode: row.error_code,
   };
 }
 
@@ -38,10 +42,27 @@ export async function findExportByIdempotencyKey(
 ): Promise<(PdfExportJob & { commandHash: string }) | null> {
   const [row] = await sql<ExportJobRow[]>`
     select id, document_id, document_version_id, visibility, status,
-      snapshot_sha256, command_hash, row_version, created_at, completed_at
+      snapshot_sha256, command_hash, row_version, created_at, completed_at,
+      output_file_id, error_code
     from export_jobs where idempotency_key = ${idempotencyKey}
   `;
   return row ? { ...adaptJob(row), commandHash: row.command_hash } : null;
+}
+
+export async function findExportForAccess(
+  sql: Sql,
+  exportJobId: string,
+): Promise<{ job: PdfExportJob; ownerAdminId: string } | null> {
+  const [row] = await sql<(ExportJobRow & { owner_admin_id: string })[]>`
+    select job.id, job.document_id, job.document_version_id, job.visibility,
+      job.status, job.snapshot_sha256, job.command_hash, job.row_version,
+      job.created_at, job.completed_at, job.output_file_id, job.error_code,
+      document.owner_admin_id
+    from export_jobs job
+    join documents document on document.id = job.document_id
+    where job.id = ${exportJobId}
+  `;
+  return row ? { job: adaptJob(row), ownerAdminId: row.owner_admin_id } : null;
 }
 
 export async function loadPdfExportSource(
@@ -162,7 +183,8 @@ export async function insertPdfExportJob(
       ${input.requestedByUserId}, ${input.idempotencyKey}, ${input.commandHash}
     )
     returning id, document_id, document_version_id, visibility, status,
-      snapshot_sha256, command_hash, row_version, created_at, completed_at
+      snapshot_sha256, command_hash, row_version, created_at, completed_at,
+      output_file_id, error_code
   `;
   return adaptJob(row);
 }

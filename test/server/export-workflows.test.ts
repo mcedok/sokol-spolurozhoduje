@@ -31,6 +31,11 @@ async function loadService() {
         },
         correlationId?: string,
       ): Promise<{ id: string; status: string; snapshotSha256: string }>;
+      getDownloadFileId(
+        actor: Actor | null,
+        exportJobId: string,
+        correlationId?: string,
+      ): Promise<string>;
     };
   }>;
 }
@@ -155,5 +160,67 @@ describe("PDF export workflows", () => {
       options: { includeAuthorEmail: true },
       idempotencyKey: crypto.randomUUID(),
     })).rejects.toMatchObject({ code: "FRESH_AUTHENTICATION_REQUIRED", status: 403 });
+  });
+
+  it("requires fresh authentication again before an internal download", async () => {
+    const seeded = await seedExportSource();
+    const sessionId = crypto.randomUUID();
+    await testSql`
+      insert into sessions (id, user_id, token_hash, csrf_hash, expires_at, created_at)
+      values (${sessionId}, ${seeded.owner.id}, ${"d".repeat(64)}, ${"e".repeat(64)},
+        now() + interval '1 day', now())
+    `;
+    const actor: Actor = { userId: seeded.owner.id, role: "admin", sessionId };
+    const { createExportService } = await loadService();
+    const service = createExportService({ sql: testSql });
+    const job = await service.createExport(actor, seeded.documentId, {
+      documentVersionId: seeded.versionId,
+      visibility: "internal",
+      options: { includeAuthorEmail: true },
+      idempotencyKey: crypto.randomUUID(),
+    });
+    await testSql`update sessions set created_at=now() - interval '1 hour' where id=${sessionId}`;
+
+    await expect(service.getDownloadFileId(actor, job.id)).rejects.toMatchObject({
+      code: "FRESH_AUTHENTICATION_REQUIRED",
+      status: 403,
+    });
+  });
+
+  it("audits a foreign administrator denied access to a download", async () => {
+    const seeded = await seedExportSource();
+    const ownerActor: Actor = {
+      userId: seeded.owner.id,
+      role: "admin",
+      sessionId: crypto.randomUUID(),
+    };
+    const foreign = await seedActiveAdmin();
+    const { createExportService } = await loadService();
+    const service = createExportService({ sql: testSql });
+    const job = await service.createExport(ownerActor, seeded.documentId, {
+      documentVersionId: seeded.versionId,
+      visibility: "public",
+      idempotencyKey: crypto.randomUUID(),
+    });
+
+    await expect(service.getDownloadFileId({
+      userId: foreign.id,
+      role: "admin",
+      sessionId: crypto.randomUUID(),
+    }, job.id, "0198f413-2a36-7000-8000-000000000399")).rejects.toMatchObject({
+      code: "FORBIDDEN",
+      status: 403,
+    });
+
+    const [audit] = await testSql<{ outcome: string; action: string; metadata: unknown }[]>`
+      select outcome, action, metadata from audit_events
+      where target_id=${job.id} and action='pdf_export.download_denied'
+      order by created_at desc limit 1
+    `;
+    expect(audit).toMatchObject({
+      outcome: "denied",
+      action: "pdf_export.download_denied",
+      metadata: { reason: "FORBIDDEN" },
+    });
   });
 });

@@ -13,6 +13,7 @@ import { appendOutbox } from "../outbox/outbox-writer";
 import { uuidV7 } from "../shared/uuid-v7";
 import {
   findExportByIdempotencyKey,
+  findExportForAccess,
   insertPdfExportJob,
   loadPdfExportSource,
 } from "./export-repository";
@@ -24,6 +25,95 @@ function commandHash(input: object): string {
 
 export function createExportService({ sql }: { sql: Sql }) {
   return {
+    async getDownloadFileId(
+      actor: Actor | null,
+      exportJobId: string,
+      correlationId = crypto.randomUUID(),
+    ): Promise<string> {
+      if (!actor || (actor.role !== "admin" && actor.role !== "superadmin")) {
+        await appendDeniedAudit(sql, {
+          actor,
+          action: "pdf_export.download_denied",
+          targetType: "export_job",
+          targetId: exportJobId,
+          correlationId,
+        });
+        if (!actor) throw unauthenticated();
+        throw new AuthError("FORBIDDEN", "PDF export je dostupný pouze administrátorům.", 403);
+      }
+      const loaded = await findExportForAccess(sql, exportJobId);
+      if (!loaded) throw new AuthError("NOT_FOUND", "PDF export nebyl nalezen.", 404);
+      if (actor.role !== "superadmin" && loaded.ownerAdminId !== actor.userId) {
+        await appendDeniedAudit(sql, {
+          actor,
+          action: "pdf_export.download_denied",
+          targetType: "export_job",
+          targetId: exportJobId,
+          correlationId,
+          metadata: { reason: "FORBIDDEN" },
+        });
+        throw new AuthError("FORBIDDEN", "Administrátor může stahovat jen vlastní exporty.", 403);
+      }
+      if (loaded.job.visibility === "internal") {
+        const [fresh] = await sql<{ allowed: boolean }[]>`
+          select exists(
+            select 1 from sessions where id=${actor.sessionId} and user_id=${actor.userId}
+              and revoked_at is null and expires_at > now()
+              and created_at >= now() - interval '15 minutes'
+          ) as allowed
+        `;
+        if (!fresh.allowed) {
+          await appendDeniedAudit(sql, {
+            actor,
+            action: "pdf_export.download_denied",
+            targetType: "export_job",
+            targetId: exportJobId,
+            correlationId,
+            metadata: { reason: "FRESH_AUTHENTICATION_REQUIRED" },
+          });
+          throw new AuthError(
+            "FRESH_AUTHENTICATION_REQUIRED",
+            "Stažení interního exportu vyžaduje nové přihlášení.",
+            403,
+          );
+        }
+      }
+      if (loaded.job.status !== "completed" || !loaded.job.outputFileId) {
+        throw new AuthError("EXPORT_NOT_READY", "PDF export zatím není připraven ke stažení.", 409);
+      }
+      return loaded.job.outputFileId;
+    },
+    async getExport(
+      actor: Actor | null,
+      exportJobId: string,
+      correlationId = crypto.randomUUID(),
+    ): Promise<PdfExportJob> {
+      if (!actor || (actor.role !== "admin" && actor.role !== "superadmin")) {
+        await appendDeniedAudit(sql, {
+          actor,
+          action: "pdf_export.read_denied",
+          targetType: "export_job",
+          targetId: exportJobId,
+          correlationId,
+        });
+        if (!actor) throw unauthenticated();
+        throw new AuthError("FORBIDDEN", "PDF export je dostupný pouze administrátorům.", 403);
+      }
+      const loaded = await findExportForAccess(sql, exportJobId);
+      if (!loaded) throw new AuthError("NOT_FOUND", "PDF export nebyl nalezen.", 404);
+      if (actor.role !== "superadmin" && loaded.ownerAdminId !== actor.userId) {
+        await appendDeniedAudit(sql, {
+          actor,
+          action: "pdf_export.read_denied",
+          targetType: "export_job",
+          targetId: exportJobId,
+          correlationId,
+          metadata: { reason: "FORBIDDEN" },
+        });
+        throw new AuthError("FORBIDDEN", "Administrátor může číst jen exporty vlastních dokumentů.", 403);
+      }
+      return loaded.job;
+    },
     async createExport(
       actor: Actor | null,
       documentId: string,
