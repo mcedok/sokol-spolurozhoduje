@@ -15,6 +15,11 @@ public record WorkerConfig(
     String fontRoot,
     int pdfValidationTimeoutSeconds) {
 
+  public static final int DEFAULT_XLSX_MAX_BYTES = 25 * 1024 * 1024;
+  public static final int DEFAULT_XLSX_MAX_ROWS = 1_000;
+  public static final int DEFAULT_XLSX_MAX_ZIP_ENTRIES = 2_000;
+  public static final long DEFAULT_XLSX_MAX_UNPACKED_BYTES = 100L * 1024 * 1024;
+
   public static WorkerConfig fromEnvironment(Map<String, String> environment) {
     return new WorkerConfig(
         required(environment, "DATABASE_URL"),
