@@ -648,6 +648,7 @@ async function runBrowserWorkflows() {
     const layout = document.querySelector('.adminLayout');
     const list = document.querySelector('.adminNormList');
     const workspace = document.querySelector('.adminWorkspace');
+    const pdfPanel = document.querySelector('.pdfExportPanel');
     const listRect = list.getBoundingClientRect();
     const workspaceRect = workspace.getBoundingClientRect();
     return {
@@ -657,6 +658,11 @@ async function runBrowserWorkflows() {
       activeCount: list.querySelectorAll('button.active').length,
       workspaceVisible: window.__accessSmoke.visible(workspace),
       workspaceBelowList: workspaceRect.top >= listRect.bottom - 1,
+      pdfPanelVisible: window.__accessSmoke.visible(pdfPanel),
+      pdfPanelOverflow: pdfPanel
+        ? Math.max(0, pdfPanel.getBoundingClientRect().right - window.innerWidth)
+        : null,
+      pdfPanelExplainsReadiness: pdfPanel?.textContent.includes('Export bude dostupný po potvrzení webové verze dokumentu.'),
       usersNavigationPresent: [...document.querySelectorAll('.topbar nav button')]
         .some((button) => button.textContent.trim() === ${JSON.stringify(COPY.users)}),
     };
@@ -664,6 +670,9 @@ async function runBrowserWorkflows() {
   assert(adminMetrics.overflow <= 1, "mobile administrator workspace has no horizontal overflow at 390x844", adminMetrics);
   assert(adminMetrics.heading === COPY.myNorms && adminMetrics.manageableCount > 0 && adminMetrics.activeCount === 1, "administrator sees an owned, selected norm in Moje normy", adminMetrics);
   assert(adminMetrics.workspaceVisible && adminMetrics.workspaceBelowList, "mobile owned-norm workspace is visible below its norm list", adminMetrics);
+  assert(adminMetrics.pdfPanelVisible && adminMetrics.pdfPanelOverflow <= 1
+    && adminMetrics.pdfPanelExplainsReadiness,
+  "mobile administrator sees the responsive PDF export panel and its readiness state", adminMetrics);
   assert(!adminMetrics.usersNavigationPresent, "administrator has no superadministrator user-management navigation", adminMetrics);
   assert(!(await evaluate(`document.querySelector('.adminPage')?.textContent.includes(${JSON.stringify(foreignNormTitle)})`)), "seed administrator workspace excludes the superadministrator-owned norm");
   await logout();
