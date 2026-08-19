@@ -13,6 +13,7 @@ import type { FileConfig } from "../files/file-config";
 import type { ObjectStorage } from "../files/object-storage";
 import type { StoredObject } from "../files/object-storage";
 import { xlsxEditableRowSchema, type XlsxEditableRow } from "../../../contracts";
+import { xlsxConflictDecisionSchema, type XlsxConflictDecision } from "../../../contracts";
 import { classifyXlsxRow } from "./xlsx-three-way-merge";
 
 interface ImportBatchRow {
@@ -370,6 +371,34 @@ export function createXlsxImportService({ sql }: { sql: Sql }) {
         await appendAudit(tx, { actor, action: "xlsx_import.safe_rows_applied", targetType: "xlsx_import_batch", targetId: batchId,
           correlationId, metadata: { documentId: access.documentId, applied, skipped } }, "allowed");
         return { applied, skipped, status: finalStatus };
+      });
+    },
+
+    async decideConflict(actor: Actor | null, batchId: string, rowId: string, decision: XlsxConflictDecision,
+      expectedRowVersion: number, reason?: string, correlationId = crypto.randomUUID()) {
+      const access = await requireBatchAccess(actor, batchId, correlationId);
+      if (!actor) throw new AuthError("UNAUTHENTICATED", "Přihlášení je vyžadováno.", 401);
+      const parsed = xlsxConflictDecisionSchema.parse(decision);
+      return withTransaction(sql, async (tx) => {
+        const [row] = await tx<{ id: string; classification: string; row_version: number }[]>`
+          select id, classification, row_version from xlsx_import_rows
+          where id=${rowId} and batch_id=${batchId} for update
+        `;
+        if (!row) throw new AuthError("NOT_FOUND", "Importní řádek nebyl nalezen.", 404);
+        if (row.classification !== "conflict") throw new AuthError("CONFLICT_NOT_PENDING", "Řádek již není v konfliktu.", 409);
+        if (row.row_version !== expectedRowVersion) throw new AuthError("STALE_IMPORT_ROW", "Řádek byl mezitím změněn.", 409);
+        await tx`
+          insert into xlsx_import_decisions (id, import_row_id, decision, decided_by_user_id, expected_row_version, reason)
+          values (${uuidV7()}, ${rowId}, ${parsed}, ${actor.userId}, ${expectedRowVersion}, ${reason?.trim() || null})
+        `;
+        const nextClassification = parsed === "keep_system" ? "already_current" : "safe_change";
+        await tx`
+          update xlsx_import_rows set classification=${nextClassification}, row_version=row_version+1, updated_at=now()
+          where id=${rowId} and row_version=${expectedRowVersion}
+        `;
+        await appendAudit(tx, { actor, action: "xlsx_import.conflict_decided", targetType: "xlsx_import_row", targetId: rowId,
+          correlationId, metadata: { batchId, documentId: access.documentId, decision: parsed } }, "allowed");
+        return { rowId, decision: parsed, classification: nextClassification };
       });
     },
   };
