@@ -21,5 +21,8 @@ class WorkerConfigTest {
     assertEquals(3310, config.clamAvPort());
     assertEquals("worker-1", config.workerId());
     assertEquals(120, config.leaseSeconds());
+    assertEquals("/opt/verapdf/verapdf", config.veraPdfCommand());
+    assertEquals("/app/fonts", config.fontRoot());
+    assertEquals(90, config.pdfValidationTimeoutSeconds());
   }
 }

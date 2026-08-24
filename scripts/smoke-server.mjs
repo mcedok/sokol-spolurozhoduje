@@ -28,9 +28,15 @@ const keys = {
   csrf: "smoke-csrf-key-12345678901234567890",
   totp: "0123456789abcdef0123456789abcdef",
 };
+const smokeStorageConnection = process.env.SMOKE_STORAGE_CONNECTION_STRING
+  ?? "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey="
+    + "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/"
+    + "K1SZFPTOtr/KBHBeksoGMGw==;"
+    + "BlobEndpoint=http://host.docker.internal:10000/devstoreaccount1;";
 const sql = postgres(hostDatabaseUrl, { max: 2 });
 let container;
 let assertions = 0;
+let logs = "";
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
@@ -178,9 +184,11 @@ async function run() {
     "-e", `CSRF_HMAC_KEY=${keys.csrf}`,
     "-e", `TOTP_ENCRYPTION_KEY=${keys.totp}`,
     "-e", `APP_ORIGIN=${origin}`,
+    "-e", `AZURE_STORAGE_CONNECTION_STRING=${smokeStorageConnection}`,
+    "-e", "AZURE_BLOB_ENDPOINT=http://localhost:10000/devstoreaccount1",
     image,
   ], { env: dockerEnvironment, stdio: ["ignore", "pipe", "pipe"] });
-  let logs = "";
+  logs = "";
   container.stdout.on("data", (chunk) => { logs += chunk; });
   container.stderr.on("data", (chunk) => { logs += chunk; });
   await waitForReadiness();
@@ -284,6 +292,76 @@ async function run() {
     JSON.stringify(publicDocumentSnapshot.data),
   ), "veřejný dokument neobsahuje interní pole");
 
+  const [{ id: adminUserId }] = await sql`
+    select id from users where email='admin.smoke@example.cz'
+  `;
+  const versionId = randomUUID();
+  await sql`
+    insert into document_versions (
+      id, document_id, version_number, status, created_by_user_id,
+      review_completed_by_user_id, review_completed_at
+    ) values (
+      ${versionId}, ${currentDocument.id}, 1, 'ready', ${adminUserId},
+      ${adminUserId}, now()
+    )
+  `;
+  const publicExport = await expectStatus(await request(
+    `/api/documents/${currentDocument.id}/exports`, {
+      method: "POST", cookie: admin.cookie, csrf: admin.csrf,
+      idempotencyKey: randomUUID(),
+      body: {
+        documentVersionId: versionId,
+        visibility: "public",
+        filters: { statuses: [], priorities: [], types: [] },
+        options: {},
+      },
+    },
+  ), 202, "založení veřejného PDF exportu");
+  check(publicExport.data.status === "queued" && publicExport.data.downloadReady === false
+    && !("outputFileId" in publicExport.data),
+  "veřejné exportní API skryje interní file ID a vrátí stav fronty");
+  const internalExport = await expectStatus(await request(
+    `/api/documents/${currentDocument.id}/exports`, {
+      method: "POST", cookie: admin.cookie, csrf: admin.csrf,
+      idempotencyKey: randomUUID(),
+      body: {
+        documentVersionId: versionId,
+        visibility: "internal",
+        filters: { statuses: ["settled"], priorities: ["high"], types: ["proposal"] },
+        options: { includeAuthorEmail: true, includeMembershipId: false, includeInternalNote: false },
+      },
+    },
+  ), 202, "založení interního filtrovaného PDF exportu");
+  const outputFileId = randomUUID();
+  await sql`
+    insert into file_objects (
+      id, document_id, data_owner_user_id, purpose, container, object_key,
+      original_name, declared_mime, detected_mime, size_bytes, sha256,
+      av_status, av_checked_at, object_status, retention_class
+    ) values (
+      ${outputFileId}, ${currentDocument.id}, ${adminUserId}, 'pdf_export', 'derivatives',
+      ${`smoke/pdf/${outputFileId}.pdf`}, 'smoke-export.pdf', 'application/pdf',
+      'application/pdf', 100, ${"f".repeat(64)}, 'clean', now(), 'derivative', 'document'
+    )
+  `;
+  await sql`
+    update export_jobs set status='completed', output_file_id=${outputFileId},
+      pdfa_validated=true, validation_report='{"compliant":true}'::jsonb,
+      completed_at=now(), updated_at=now(), row_version=row_version+1
+    where id=${internalExport.data.id}
+  `;
+  const completedExport = await expectStatus(await request(
+    `/api/export-jobs/${internalExport.data.id}`, { cookie: admin.cookie },
+  ), 200, "stav dokončeného interního PDF exportu");
+  check(completedExport.data.status === "completed" && completedExport.data.downloadReady === true
+    && !("outputFileId" in completedExport.data),
+  "stav exportu zpřístupní stažení bez interního file ID");
+  const exportDownload = await expectStatus(await request(
+    `/api/export-jobs/${internalExport.data.id}/download-link`, { cookie: admin.cookie },
+  ), 200, "krátkodobý odkaz interního PDF exportu");
+  check(exportDownload.data.url.includes("sig=") && exportDownload.data.expiresAt,
+    "interní PDF má časově omezený podepsaný odkaz");
+
   const otherAccount = await seedAdmin({
     email: "jiny.admin.smoke@example.cz", role: "admin", password: "Smoke-Other-3!",
   });
@@ -349,6 +427,9 @@ try {
   process.stdout.write(`SMOKE PASS (${assertions} kontrol)\n`);
 } catch (error) {
   process.stderr.write(`SMOKE FAIL: ${error.stack ?? error}\n`);
+  if (typeof logs === "string" && logs) {
+    process.stderr.write(`SERVER LOGS:\n${logs.slice(-20_000)}\n`);
+  }
   process.exitCode = 1;
 } finally {
   try { await cleanup(); } catch (error) {

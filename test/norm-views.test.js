@@ -266,6 +266,24 @@ describe("role-aware správa norem", () => {
     }));
   });
 
+  it("nabízí v administraci pouze produkční DOCX převod", () => {
+    render(createElement(NormAdministration, {
+      norms: [norm],
+      selectedNorm: { ...norm, rowVersion: 3 },
+      currentUser: administrator,
+      actions: {
+        uploadDocumentVersion: vi.fn(),
+        getConversionProcessing: vi.fn(),
+        getConversionPreview: vi.fn(),
+      },
+    }));
+    expect(screen.getByLabelText("Nahrát dokument DOCX")).toHaveAttribute(
+      "accept",
+      ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
+    expect(screen.queryByText(/PDF, DOCX nebo ODT/i)).not.toBeInTheDocument();
+  });
+
   it("řadič získá pro administrátora jen vlastní normy a pro superadministrátora všechny přes listManageable", async () => {
     const { result } = renderHook(() => useAppController());
     await waitFor(() => expect(result.current.actions.ready).toBe(true), { timeout: 5000 });

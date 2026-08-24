@@ -430,6 +430,95 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { border-color
   .memberProfileFacts div:last-child { border-bottom: 0; }
 }
 
+.pdfExportPanel { display: grid; gap: 1rem; }
+.pdfExportForm { display: grid; gap: 1rem; }
+.pdfExportForm fieldset { display: flex; flex-wrap: wrap; gap: .75rem 1.25rem; border: 1px solid #d7d9dc; border-radius: .5rem; padding: .9rem; }
+.pdfExportForm legend { padding: 0 .35rem; font-weight: 700; }
+.pdfExportForm label { display: inline-flex; align-items: center; gap: .35rem; min-height: 44px; }
+.pdfExportForm input { width: 1.25rem; height: 1.25rem; }
+.pdfExportFilters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+.pdfExportFilters > p { grid-column: 1 / -1; margin: 0; }
+.pdfExportStatus { padding: 1rem; border-left: 4px solid #c8192e; background: #f5f5f5; }
+.pdfExportStatus .primaryButton { display: inline-flex; align-items: center; min-height: 44px; }
+
+@media (max-width: 640px) {
+  .pdfExportForm fieldset { flex-direction: column; }
+  .pdfExportFilters { grid-template-columns: 1fr; }
+  .pdfExportForm > button, .pdfExportStatus > button, .pdfExportStatus .primaryButton { width: 100%; justify-content: center; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
+}
+/* Kontrola převodu DOCX */
+.documentConversionWizard {
+  margin-top: 24px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.conversionProgress,
+.conversionOk,
+.conversionSummary {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #f2f5f7;
+}
+
+.conversionProgress { display: flex; gap: 12px; justify-content: space-between; }
+.conversionProgress.failed,
+.conversionProgress.rejected,
+.conversionFinding.blocking { border-left: 5px solid #b4162c; }
+.conversionOk { border-left: 5px solid #19733b; }
+.conversionReview { margin-top: 24px; }
+.previewTabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.previewTabs button { min-height: 44px; }
+.previewTabs [aria-selected="true"] { color: #fff; background: #b4162c; }
+.previewPanels { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .8fr); gap: 16px; }
+.webPreview,
+.referencePreview { max-height: 66vh; overflow: auto; border: 1px solid #d8d8d8; border-radius: 10px; padding: 12px; }
+.referencePreview iframe { width: 100%; min-height: 58vh; border: 0; }
+.conversionBlock { padding: 14px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fff; }
+.conversionBlock.active { outline: 3px solid #235a96; outline-offset: 2px; }
+.conversionBlock button,
+.conversionFinding button,
+.blockStructureEditor button,
+.conversionSummary button { min-width: 44px; min-height: 44px; }
+.conversionFindings { margin-top: 20px; }
+.conversionFinding { display: grid; gap: 12px; margin: 10px 0; padding: 14px; background: #f7f7f7; }
+.conversionFinding > div { display: flex; flex-direction: column; gap: 4px; }
+.conversionFinding form,
+.blockStructureEditor form { display: grid; gap: 12px; }
+.blockStructureEditor { margin-top: 20px; padding: 18px; border: 2px solid #235a96; border-radius: 12px; }
+.blockStructureEditor textarea { min-height: 90px; }
+.checkControl { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+
+@media (max-width: 760px) {
+  .previewPanels { display: block; }
+  .previewTabs button { flex: 1; }
+  .conversionProgress { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .documentConversionWizard *, .documentConversionWizard *::before, .documentConversionWizard *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+  }
+}
+
+.versionMappingReview { margin-top: 24px; }
+.mappingList { display: grid; gap: 16px; }
+.mappingItem { border: 1px solid #d8d8d8; border-radius: 10px; padding: 16px; background: #fff; }
+.mappingItemMeta,
+.mappingActions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.mappingComparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.mappingComparison section { background: #f4f4f4; border-radius: 8px; padding: 12px; }
+.mappingDecisionButton { min-width: 44px; min-height: 44px; }
+
+@media (max-width: 700px) {
+  .mappingComparison { grid-template-columns: 1fr; }
 }

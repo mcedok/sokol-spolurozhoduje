@@ -10,7 +10,10 @@ public record WorkerConfig(
     String clamAvHost,
     int clamAvPort,
     String workerId,
-    int leaseSeconds) {
+    int leaseSeconds,
+    String veraPdfCommand,
+    String fontRoot,
+    int pdfValidationTimeoutSeconds) {
 
   public static WorkerConfig fromEnvironment(Map<String, String> environment) {
     return new WorkerConfig(
@@ -21,7 +24,11 @@ public record WorkerConfig(
         required(environment, "CLAMAV_HOST"),
         positiveInteger(environment.get("CLAMAV_PORT"), 3310, "CLAMAV_PORT"),
         required(environment, "WORKER_ID"),
-        positiveInteger(environment.get("WORKER_LEASE_SECONDS"), 120, "WORKER_LEASE_SECONDS"));
+        positiveInteger(environment.get("WORKER_LEASE_SECONDS"), 120, "WORKER_LEASE_SECONDS"),
+        environment.getOrDefault("VERAPDF_COMMAND", "/opt/verapdf/verapdf"),
+        environment.getOrDefault("SOKOL_FONT_ROOT", "/app/fonts"),
+        positiveInteger(environment.get("PDF_VALIDATION_TIMEOUT_SECONDS"), 90,
+            "PDF_VALIDATION_TIMEOUT_SECONDS"));
   }
 
   private static String required(Map<String, String> environment, String name) {

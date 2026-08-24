@@ -58,6 +58,7 @@ export function createConversionService({ sql }: { sql: Sql }) {
         version_id: string;
         owner_admin_id: string;
         version_status: string;
+        row_version: number;
         job_id: string;
         job_status: string;
         current_step: string;
@@ -67,7 +68,7 @@ export function createConversionService({ sql }: { sql: Sql }) {
         completed_at: Date | null;
       }[]>`
         select version.id as version_id, document.owner_admin_id,
-          version.status::text as version_status, job.id as job_id,
+          version.status::text as version_status, version.row_version, job.id as job_id,
           job.status as job_status, job.current_step, job.attempt_count,
           job.error_code, job.started_at, job.completed_at
         from document_versions version
@@ -91,6 +92,7 @@ export function createConversionService({ sql }: { sql: Sql }) {
         jobId: row.job_id,
         jobStatus: row.job_status,
         versionStatus: row.version_status,
+        rowVersion: row.row_version,
         step: row.current_step,
         attemptCount: row.attempt_count,
         errorCode: row.error_code,
@@ -144,10 +146,11 @@ export function createConversionService({ sql }: { sql: Sql }) {
         commentable: boolean;
         plain_text: string;
         structured_content: Record<string, unknown>;
+        source_range: Record<string, unknown> | null;
       }[]>`
         select revision.block_uid, revision.block_revision_id, revision.block_type,
           revision.block_order, revision.commentable, revision.plain_text,
-          revision.structured_content
+          revision.structured_content, revision.source_range
         from block_revisions revision
         where revision.document_version_id=${versionId} and revision.superseded_at is null
         order by revision.block_order
@@ -181,12 +184,24 @@ export function createConversionService({ sql }: { sql: Sql }) {
         where job.document_version_id=${versionId}
         order by finding.created_at, finding.id
       `;
+      const [referenceFile] = await tx<{ id: string }[]>`
+        select id from file_objects
+        where document_id=${version.document_id}
+          and purpose='reference_render'
+          and container='derivatives'
+          and av_status='clean'
+          and object_status='derivative'
+          and object_key like ${`${version.document_id}/${versionId}/reference/%`}
+        order by created_at desc, id desc
+        limit 1
+      `;
       return { value: {
         id: version.id,
         documentId: version.document_id,
         status: version.status,
         rowVersion: version.row_version,
         reviewCompletedAt: version.review_completed_at?.toISOString() ?? null,
+        referenceFileId: referenceFile?.id ?? null,
         blocks: blocks.map((block) => ({
           blockUid: block.block_uid,
           blockRevisionId: block.block_revision_id,
@@ -195,6 +210,14 @@ export function createConversionService({ sql }: { sql: Sql }) {
           commentable: block.commentable,
           text: block.plain_text,
           structuredContent: block.structured_content,
+          sourceRange: block.source_range,
+          tableRepresentation: typeof block.structured_content.confirmedRepresentation === "string"
+            ? block.structured_content.confirmedRepresentation
+            : null,
+          alternativeText: assets.find(
+            (asset) => asset.block_revision_id === block.block_revision_id
+              && asset.alternative_text,
+          )?.alternative_text ?? null,
           assets: assets.filter((asset) => asset.block_revision_id === block.block_revision_id)
             .map((asset) => ({
               id: asset.id,

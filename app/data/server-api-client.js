@@ -54,6 +54,7 @@ function adaptDocument(document) {
     submissions: [],
     needVotes: { yes: 0, no: 0 },
     file: null,
+    latestReadyVersionId: document.latestReadyVersionId || null,
   };
 }
 
@@ -93,11 +94,13 @@ export function createServerApiClient({
   async function request(path, {
     method = "GET",
     body,
+    rawBody,
+    headers: suppliedHeaders,
     rowVersion,
     idempotencyKey,
     csrf = method !== "GET",
   } = {}) {
-    const headers = {};
+    const headers = { ...suppliedHeaders };
     if (body !== undefined) headers["content-type"] = "application/json";
     if (rowVersion !== undefined) headers["if-match"] = String(rowVersion);
     if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
@@ -106,7 +109,9 @@ export function createServerApiClient({
       method,
       credentials: "same-origin",
       headers,
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(rawBody !== undefined
+        ? { body: rawBody }
+        : body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     const isJson = response.headers.get("content-type")?.includes("json");
     const payload = isJson ? await response.json() : null;
@@ -123,6 +128,105 @@ export function createServerApiClient({
     currentSnapshot = adaptBootstrapForPilotUi(await request("/api/bootstrap"));
     return currentSnapshot;
   }
+
+  const uploadDocumentVersion = (documentId, file, command) => request(
+    `/api/documents/${documentId}/versions/uploads`,
+    {
+      method: "POST",
+      rawBody: file,
+      rowVersion: command.rowVersion,
+      idempotencyKey: command.idempotencyKey,
+      headers: {
+        "content-type": file.type,
+        "content-length": String(file.size),
+        "x-file-name": encodeURIComponent(file.name),
+      },
+    },
+  );
+
+  const getConversionProcessing = (versionId) =>
+    request(`/api/document-versions/${versionId}/processing`);
+  const getConversionPreview = (versionId) =>
+    request(`/api/document-versions/${versionId}/preview`);
+  const retryConversion = (jobId, command) => request(`/api/conversion-jobs/${jobId}/retry`, {
+    method: "POST",
+    body: {},
+    rowVersion: command.rowVersion,
+    idempotencyKey: command.idempotencyKey,
+  });
+  const updateBlockStructure = (versionId, blockUid, input) => request(
+    `/api/document-versions/${versionId}/blocks/${blockUid}`,
+    {
+      method: "PATCH",
+      body: {
+        reason: input.reason,
+        type: input.type,
+        text: input.text,
+        commentable: input.commentable,
+        ...(input.order === undefined ? {} : { order: input.order }),
+        ...(input.sourceRange === undefined ? {} : { sourceRange: input.sourceRange }),
+        ...(input.tableRepresentation === undefined
+          ? {} : { tableRepresentation: input.tableRepresentation }),
+        ...(input.alternativeText === undefined ? {} : { alternativeText: input.alternativeText }),
+      },
+      rowVersion: input.rowVersion,
+      idempotencyKey: input.idempotencyKey,
+    },
+  );
+  const decideConversionFinding = (findingId, input) => request(
+    `/api/conversion-findings/${findingId}/decision`,
+    {
+      method: "POST",
+      body: { status: input.status, reason: input.reason },
+      rowVersion: input.rowVersion,
+      idempotencyKey: input.idempotencyKey,
+    },
+  );
+  const completeConversionReview = (versionId, command) => request(
+    `/api/document-versions/${versionId}/review-completion`,
+    {
+      method: "POST",
+      body: {},
+      rowVersion: command.rowVersion,
+      idempotencyKey: command.idempotencyKey,
+    },
+  );
+  const createFileDownloadLink = (fileId) =>
+    request(`/api/file-objects/${fileId}/download-link`);
+  const generateVersionMappings = (versionId, command) => request(
+    `/api/document-versions/${versionId}/mappings`,
+    {
+      method: "POST",
+      idempotencyKey: command.idempotencyKey,
+    },
+  );
+  const getVersionMappings = (versionId) =>
+    request(`/api/document-versions/${versionId}/mappings`);
+  const decideVersionMapping = (mappingId, input) => request(
+    `/api/block-mappings/${mappingId}/decision`,
+    {
+      method: "PUT",
+      body: { decision: input.decision, reason: input.reason },
+      rowVersion: input.rowVersion,
+      idempotencyKey: input.idempotencyKey,
+    },
+  );
+  const createPdfExport = (documentId, input) => request(
+    `/api/documents/${documentId}/exports`,
+    {
+      method: "POST",
+      body: {
+        documentVersionId: input.documentVersionId,
+        visibility: input.visibility,
+        filters: input.filters,
+        options: input.options,
+      },
+      idempotencyKey: input.idempotencyKey,
+    },
+  );
+  const getPdfExport = (jobId) => request(`/api/export-jobs/${jobId}`);
+  const getPdfExportDownloadLink = (jobId) =>
+    request(`/api/export-jobs/${jobId}/download-link`);
 
   const auth = {
     backend: "server",
@@ -313,6 +417,20 @@ export function createServerApiClient({
   return {
     backend: "server",
     bootstrap,
+    uploadDocumentVersion,
+    getConversionProcessing,
+    getConversionPreview,
+    retryConversion,
+    updateBlockStructure,
+    decideConversionFinding,
+    completeConversionReview,
+    createFileDownloadLink,
+    generateVersionMappings,
+    getVersionMappings,
+    decideVersionMapping,
+    createPdfExport,
+    getPdfExport,
+    getPdfExportDownloadLink,
     auth,
     normService,
     userService,

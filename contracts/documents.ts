@@ -33,6 +33,7 @@ export const documentAdminViewSchema = publicDocumentSummarySchema.extend({
   ownerAdminId: z.string().uuid(),
   closureReason: z.string(),
   rowVersion: z.number().int().positive(),
+  latestReadyVersionId: z.string().uuid().nullable(),
 });
 
 export type DocumentStatus = z.infer<typeof documentStatusSchema>;
