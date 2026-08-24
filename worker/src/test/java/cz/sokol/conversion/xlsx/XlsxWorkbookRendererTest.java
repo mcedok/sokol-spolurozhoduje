@@ -31,7 +31,30 @@ class XlsxWorkbookRendererTest {
         assertTrue(workbook.getSheetAt(1).getProtect());
         assertTrue(workbook.getSheetAt(1).getRow(1).getCell(0).getCellStyle().getLocked());
         assertTrue(!workbook.getSheetAt(1).getRow(1).getCell(7).getCellStyle().getLocked());
+        assertTrue(workbook.getSheetAt(1).getRow(1).getCell(2).getCellStyle().getWrapText());
+        assertTrue(workbook.getSheetAt(1).getRow(1).getCell(11).getCellStyle().getWrapText());
         assertEquals(CellType.STRING, workbook.getSheetAt(1).getRow(1).getCell(6).getCellType());
+        assertEquals("Uzamčená pole", workbook.getSheet("Pokyny").getRow(5).getCell(0).getStringCellValue());
+        assertEquals("Editovatelná pole", workbook.getSheet("Pokyny").getRow(6).getCell(0).getStringCellValue());
+        assertTrue(workbook.getName("TypeList") != null);
+        assertTrue(workbook.getName("PriorityList") != null);
+        assertTrue(workbook.getName("StatusList") != null);
+        assertTrue(workbook.getName("OutcomeList") != null);
+        assertEquals("comment", workbook.getSheet("Číselníky").getRow(0).getCell(1).getStringCellValue());
+        assertEquals("proposal", workbook.getSheet("Číselníky").getRow(0).getCell(2).getStringCellValue());
+        assertEquals("question", workbook.getSheet("Číselníky").getRow(0).getCell(3).getStringCellValue());
+        assertTrue(workbook.getSheet("Vypořádání").getSheetConditionalFormatting()
+            .getNumConditionalFormattings() > 0);
+        assertTrue(workbook.getSheet("Statistika").getLastRowNum() >= 20);
+        var manifest = workbook.getSheet("Manifest");
+        boolean hasCreatedAt = false;
+        boolean hasCodeListVersion = false;
+        for (var row : manifest) {
+          if ("createdAt".equals(row.getCell(0).getStringCellValue())) hasCreatedAt = true;
+          if ("codeListVersion".equals(row.getCell(0).getStringCellValue())) hasCodeListVersion = true;
+        }
+        assertTrue(hasCreatedAt);
+        assertTrue(hasCodeListVersion);
       }
     } finally {
       Files.deleteIfExists(output);

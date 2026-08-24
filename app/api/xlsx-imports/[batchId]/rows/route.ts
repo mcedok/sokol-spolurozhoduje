@@ -2,9 +2,10 @@ import { z } from "zod";
 import { problemResponse } from "../../../../../server/http/problem-details";
 import { currentActor, requestCorrelationId } from "../../../../../server/http/route-utils";
 import { getIdentityRuntime } from "../../../../../server/runtime";
+import { xlsxRowClassificationSchema } from "../../../../../contracts";
 
 const querySchema = z.object({
-  classification: z.string().optional(),
+  classification: xlsxRowClassificationSchema.optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
   offset: z.coerce.number().int().nonnegative().optional(),
 }).strict();
@@ -17,10 +18,10 @@ export async function GET(
   try {
     const { batchId } = await context.params;
     const query = Object.fromEntries(new URL(request.url).searchParams.entries());
-    const rows = await getIdentityRuntime().xlsxImports.listRows(
+    const result = await getIdentityRuntime().xlsxImports.listRows(
       await currentActor(), batchId, querySchema.parse(query), correlationId,
     );
-    return Response.json({ rows }, { headers: { "cache-control": "no-store" } });
+    return Response.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return problemResponse(error, correlationId);
   }

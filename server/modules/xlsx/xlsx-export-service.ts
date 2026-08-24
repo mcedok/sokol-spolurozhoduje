@@ -76,6 +76,13 @@ export function createXlsxExportService({ sql }: { sql: Sql }) {
           if (replay.commandHash !== fingerprint) {
             return { error: new AuthError("IDEMPOTENCY_CONFLICT", "Identifikátor požadavku již byl použit pro jiný export.", 409) } as const;
           }
+          const access = await findXlsxExportForAccess(tx, replay.id);
+          if (!access || (actor.role !== "superadmin" && access.ownerAdminId !== actor.userId)) {
+            return { error: new AuthError("FORBIDDEN", "Administrátor může exportovat jen vlastní dokument.", 403) } as const;
+          }
+          if (!await hasFreshAuthentication(tx, actor)) {
+            return { error: new AuthError("FRESH_AUTHENTICATION_REQUIRED", "Pracovní XLSX vyžaduje nové přihlášení.", 403) } as const;
+          }
           const { commandHash: _commandHash, ...job } = replay;
           return { value: job } as const;
         }
@@ -107,6 +114,10 @@ export function createXlsxExportService({ sql }: { sql: Sql }) {
           return { error: new AuthError("FRESH_AUTHENTICATION_REQUIRED", "Pracovní XLSX vyžaduje nové přihlášení.", 403) } as const;
         }
 
+        const signingKeyId = process.env.XLSX_MANIFEST_KEY_ID;
+        if (!signingKeyId) {
+          throw new AuthError("XLSX_SIGNING_NOT_CONFIGURED", "Podpis pracovního XLSX není nakonfigurován.", 503);
+        }
         const snapshot = buildXlsxExportSnapshot(loaded.source, new Date().toISOString());
         const checksum = xlsxSnapshotChecksum(snapshot);
         const jobId = uuidV7();
@@ -121,7 +132,7 @@ export function createXlsxExportService({ sql }: { sql: Sql }) {
           requestedByUserId: actor.userId,
           idempotencyKey: input.idempotencyKey,
           commandHash: fingerprint,
-          signingKeyId: process.env.XLSX_MANIFEST_KEY_ID ?? "local-development",
+          signingKeyId,
         });
         await appendOutbox(tx, {
           eventType: "xlsx.export.requested",

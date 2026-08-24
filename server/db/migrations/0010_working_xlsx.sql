@@ -70,7 +70,12 @@ create table xlsx_import_batches (
   row_count integer not null default 0 check (row_count between 0 and 1000),
   counts jsonb not null default '{"unchanged":0,"safeChange":0,"alreadyCurrent":0,"conflict":0,"invalid":0}',
   uploaded_by_user_id uuid not null references users(id) on delete restrict,
+  actor_session_id uuid not null references sessions(id) on delete restrict,
   idempotency_key uuid not null unique,
+  command_hash text not null check (command_hash ~ '^[a-f0-9]{64}$'),
+  attempt_count integer not null default 0 check (attempt_count >= 0),
+  lease_expires_at timestamptz,
+  started_at timestamptz,
   row_version integer not null default 1 check (row_version > 0),
   created_at timestamptz not null default now(),
   completed_at timestamptz,
@@ -81,6 +86,45 @@ create table xlsx_import_batches (
 
 create index xlsx_import_batches_document_idx
   on xlsx_import_batches(document_id, created_at desc);
+
+create index xlsx_import_batches_queue_idx
+  on xlsx_import_batches(created_at, id)
+  where status in ('uploaded', 'scanning', 'validating');
+
+create table xlsx_import_stage_events (
+  id uuid primary key,
+  batch_id uuid not null references xlsx_import_batches(id) on delete restrict,
+  event_type text not null check (event_type in (
+    'claimed', 'archived', 'compared', 'safe_applied', 'failed'
+  )),
+  status text not null,
+  details jsonb not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create index xlsx_import_stage_events_batch_idx
+  on xlsx_import_stage_events(batch_id, created_at, id);
+
+create trigger xlsx_import_stage_events_append_only
+before update or delete on xlsx_import_stage_events
+for each row execute function prevent_comment_history_mutation();
+
+create table comment_attribute_revisions (
+  id uuid primary key,
+  comment_id uuid not null references comments(id) on delete restrict,
+  previous_type text not null check (previous_type in ('comment', 'proposal', 'question')),
+  previous_priority text not null check (previous_priority in ('low', 'normal', 'high', 'critical')),
+  edited_by_user_id uuid not null references users(id) on delete restrict,
+  reason text not null check (length(trim(reason)) > 0),
+  created_at timestamptz not null default now()
+);
+
+create index comment_attribute_revisions_comment_idx
+  on comment_attribute_revisions(comment_id, created_at, id);
+
+create trigger comment_attribute_revisions_append_only
+before update or delete on comment_attribute_revisions
+for each row execute function prevent_comment_history_mutation();
 
 create table xlsx_import_rows (
   id uuid primary key,
@@ -113,6 +157,8 @@ create table xlsx_import_decisions (
   decided_by_user_id uuid not null references users(id) on delete restrict,
   expected_row_version integer not null check (expected_row_version > 0),
   reason text,
+  idempotency_key uuid not null unique,
+  command_hash text not null check (command_hash ~ '^[a-f0-9]{64}$'),
   created_at timestamptz not null default now()
 );
 
@@ -127,6 +173,8 @@ create table xlsx_apply_runs (
   expected_batch_row_version integer not null check (expected_batch_row_version > 0),
   actor_user_id uuid not null references users(id) on delete restrict,
   correlation_id uuid not null,
+  idempotency_key uuid not null unique,
+  command_hash text not null check (command_hash ~ '^[a-f0-9]{64}$'),
   applied_count integer not null default 0 check (applied_count >= 0),
   skipped_count integer not null default 0 check (skipped_count >= 0),
   failed_count integer not null default 0 check (failed_count >= 0),
@@ -146,3 +194,24 @@ create table xlsx_row_applications (
   created_at timestamptz not null default now(),
   unique (apply_run_id, import_row_id)
 );
+
+create trigger xlsx_import_decisions_append_only
+before update or delete on xlsx_import_decisions
+for each row execute function prevent_comment_history_mutation();
+
+create trigger xlsx_row_applications_append_only
+before update or delete on xlsx_row_applications
+for each row execute function prevent_comment_history_mutation();
+
+create function guard_xlsx_apply_run_mutation() returns trigger language plpgsql as $$
+begin
+  if tg_op = 'DELETE' or old.status <> 'processing' or new.status not in ('completed', 'failed') then
+    raise exception 'xlsx apply runs are append-only after completion';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger xlsx_apply_runs_guard
+before update or delete on xlsx_apply_runs
+for each row execute function guard_xlsx_apply_run_mutation();

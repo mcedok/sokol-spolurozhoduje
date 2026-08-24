@@ -55,9 +55,9 @@ export function fileConfig(env: NodeJS.ProcessEnv = process.env): FileConfig {
     quarantineContainer: QUARANTINE_CONTAINER,
     originalsContainer: ORIGINALS_CONTAINER,
     derivativesContainer: DERIVATIVES_CONTAINER,
-    maxUploadBytes: 25 * 1024 * 1024,
-    maxUnpackedBytes: 250 * 1024 * 1024,
-    maxEntries: 10_000,
+    maxUploadBytes: positiveInteger(env.XLSX_MAX_BYTES, 25 * 1024 * 1024, "XLSX_MAX_BYTES"),
+    maxUnpackedBytes: positiveInteger(env.XLSX_MAX_UNPACKED_BYTES, 100 * 1024 * 1024, "XLSX_MAX_UNPACKED_BYTES"),
+    maxEntries: positiveInteger(env.XLSX_MAX_ZIP_ENTRIES, 2_000, "XLSX_MAX_ZIP_ENTRIES"),
     maxCompressionRatio: 100,
     readUrlTtlSeconds,
   };

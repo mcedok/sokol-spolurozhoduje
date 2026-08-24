@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 
 process.env.SOKOL_PROJECT_ROOT = dirname(fileURLToPath(import.meta.url));
 process.env.NEXT_PUBLIC_DATA_BACKEND ??= "browser";
+process.env.XLSX_MANIFEST_KEY_ID ??= "test-key";
+process.env.WORKER_CALLBACK_SECRET ??= "test-worker-callback-secret";
 
 export default defineConfig({
   plugins: [react()],

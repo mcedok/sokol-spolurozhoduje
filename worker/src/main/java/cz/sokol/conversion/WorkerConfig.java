@@ -13,7 +13,16 @@ public record WorkerConfig(
     int leaseSeconds,
     String veraPdfCommand,
     String fontRoot,
-    int pdfValidationTimeoutSeconds) {
+    int pdfValidationTimeoutSeconds,
+    String xlsxManifestKeyId,
+    String xlsxManifestSecret,
+    String xlsxManifestRetainedKeys,
+    int xlsxMaxBytes,
+    int xlsxMaxRows,
+    int xlsxMaxZipEntries,
+    long xlsxMaxUnpackedBytes,
+    String applicationInternalUrl,
+    String workerCallbackSecret) {
 
   public static final int DEFAULT_XLSX_MAX_BYTES = 25 * 1024 * 1024;
   public static final int DEFAULT_XLSX_MAX_ROWS = 1_000;
@@ -33,7 +42,18 @@ public record WorkerConfig(
         environment.getOrDefault("VERAPDF_COMMAND", "/opt/verapdf/verapdf"),
         environment.getOrDefault("SOKOL_FONT_ROOT", "/app/fonts"),
         positiveInteger(environment.get("PDF_VALIDATION_TIMEOUT_SECONDS"), 90,
-            "PDF_VALIDATION_TIMEOUT_SECONDS"));
+            "PDF_VALIDATION_TIMEOUT_SECONDS"),
+        required(environment, "XLSX_MANIFEST_KEY_ID"),
+        required(environment, "XLSX_MANIFEST_SECRET"),
+        environment.getOrDefault("XLSX_MANIFEST_RETAINED_KEYS", ""),
+        positiveInteger(environment.get("XLSX_MAX_BYTES"), DEFAULT_XLSX_MAX_BYTES, "XLSX_MAX_BYTES"),
+        positiveInteger(environment.get("XLSX_MAX_ROWS"), DEFAULT_XLSX_MAX_ROWS, "XLSX_MAX_ROWS"),
+        positiveInteger(environment.get("XLSX_MAX_ZIP_ENTRIES"), DEFAULT_XLSX_MAX_ZIP_ENTRIES,
+            "XLSX_MAX_ZIP_ENTRIES"),
+        positiveLong(environment.get("XLSX_MAX_UNPACKED_BYTES"), DEFAULT_XLSX_MAX_UNPACKED_BYTES,
+            "XLSX_MAX_UNPACKED_BYTES"),
+        required(environment, "APPLICATION_INTERNAL_URL"),
+        required(environment, "WORKER_CALLBACK_SECRET"));
   }
 
   private static String required(Map<String, String> environment, String name) {
@@ -47,6 +67,16 @@ public record WorkerConfig(
   private static int positiveInteger(String value, int fallback, String name) {
     try {
       int parsed = value == null ? fallback : Integer.parseInt(value);
+      if (parsed <= 0) throw new NumberFormatException();
+      return parsed;
+    } catch (NumberFormatException error) {
+      throw new IllegalArgumentException(name + " musí být kladné celé číslo.");
+    }
+  }
+
+  private static long positiveLong(String value, long fallback, String name) {
+    try {
+      long parsed = value == null ? fallback : Long.parseLong(value);
       if (parsed <= 0) throw new NumberFormatException();
       return parsed;
     } catch (NumberFormatException error) {

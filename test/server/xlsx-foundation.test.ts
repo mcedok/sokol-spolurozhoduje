@@ -24,6 +24,7 @@ describe("working XLSX foundation", () => {
       "xlsx_import_batches",
       "xlsx_import_decisions",
       "xlsx_import_rows",
+      "xlsx_import_stage_events",
       "xlsx_row_applications",
     ];
     const rows = await testSql<{ table_name: string }[]>`

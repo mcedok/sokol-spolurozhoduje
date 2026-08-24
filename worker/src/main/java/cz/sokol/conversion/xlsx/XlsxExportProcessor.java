@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,13 +15,20 @@ public final class XlsxExportProcessor {
   private final Repository repository;
   private final BlobStore blobs;
   private final Renderer renderer;
-  private final byte[] signingSecret;
+  private final Map<String, byte[]> signingKeys;
 
   public XlsxExportProcessor(Repository repository, BlobStore blobs, Renderer renderer, byte[] signingSecret) {
+    this(repository, blobs, renderer, Map.of("__legacy__", signingSecret));
+  }
+
+  public XlsxExportProcessor(Repository repository, BlobStore blobs, Renderer renderer,
+      Map<String, byte[]> signingKeys) {
     this.repository = repository;
     this.blobs = blobs;
     this.renderer = renderer;
-    this.signingSecret = signingSecret.clone();
+    this.signingKeys = signingKeys.entrySet().stream().collect(
+        java.util.stream.Collectors.toUnmodifiableMap(Map.Entry::getKey,
+            entry -> entry.getValue().clone()));
   }
 
   public boolean processNext(Path workRoot) throws Exception {
@@ -31,12 +39,20 @@ public final class XlsxExportProcessor {
     Files.createDirectories(root);
     Path directory = Files.createTempDirectory(root, "xlsx-export-" + job.id() + "-");
     try {
-      if (!job.snapshotSha256().equals(digest(job.snapshotJson().getBytes(java.nio.charset.StandardCharsets.UTF_8)))) {
+      if (!job.snapshotSha256().equals(XlsxCanonicalJson.sha256(job.snapshotJson()))) {
         repository.fail(job, "SNAPSHOT_INTEGRITY", "Checksum snapshotu neodpovídá obsahu.");
         return true;
       }
       Path output = directory.resolve("pripominky.xlsx");
-      renderer.render(job.snapshotJson(), output, job.id().toString(), signingSecret);
+      byte[] signingSecret = signingKeys.get(job.signingKeyId());
+      if (signingSecret == null && signingKeys.size() == 1 && signingKeys.containsKey("__legacy__")) {
+        signingSecret = signingKeys.get("__legacy__");
+      }
+      if (signingSecret == null) {
+        repository.fail(job, "MANIFEST_KEY_UNKNOWN", "Podpisový klíč exportu není dostupný.");
+        return true;
+      }
+      renderer.render(job.snapshotJson(), output, job.id().toString(), job.signingKeyId(), signingSecret);
       String sha256 = digest(output);
       String key = job.documentId() + "/" + job.documentVersionId() + "/exports/"
           + job.id() + "/" + sha256 + ".xlsx";
@@ -89,9 +105,10 @@ public final class XlsxExportProcessor {
 
   @FunctionalInterface
   public interface Renderer {
-    void render(String snapshotJson, Path output, String exportJobId, byte[] signingSecret) throws Exception;
+    void render(String snapshotJson, Path output, String exportJobId, String signingKeyId,
+        byte[] signingSecret) throws Exception;
   }
 
   public record Job(UUID id, UUID documentId, UUID documentVersionId, UUID requestedByUserId,
-      String snapshotJson, String snapshotSha256) {}
+      String snapshotJson, String snapshotSha256, String signingKeyId) {}
 }

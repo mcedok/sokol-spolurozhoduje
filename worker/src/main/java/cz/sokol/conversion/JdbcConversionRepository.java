@@ -477,7 +477,7 @@ public final class JdbcConversionRepository implements ConversionProcessor.Repos
     }
     String previousHash = null;
     try (var previous = connection.prepareStatement(
-        "select event_hash from audit_events order by created_at desc,id desc limit 1");
+        "select event_hash from audit_events order by chain_sequence desc limit 1");
         var row = previous.executeQuery()) {
       if (row.next()) previousHash = row.getString("event_hash");
     }
@@ -500,8 +500,8 @@ public final class JdbcConversionRepository implements ConversionProcessor.Repos
     try (var insert = connection.prepareStatement("""
         insert into audit_events(
           actor_user_id,actor_role,action,target_type,target_id,outcome,correlation_id,
-          metadata,previous_hash,event_hash)
-        values (null,null,'conversion.completed','document_version',?,'allowed',?,?::jsonb,?,?)
+          metadata,previous_hash,event_hash,created_at)
+        values (null,null,'conversion.completed','document_version',?,'allowed',?,?::jsonb,?,?,clock_timestamp())
         """)) {
       insert.setObject(1, job.versionId());
       insert.setObject(2, job.correlationId());

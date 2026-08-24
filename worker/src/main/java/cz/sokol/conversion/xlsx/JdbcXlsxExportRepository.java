@@ -42,6 +42,7 @@ public final class JdbcXlsxExportRepository implements XlsxExportProcessor.Repos
         from candidate where job.id=candidate.id
         returning job.id, job.document_id, job.document_version_id,
           job.requested_by_user_id, job.snapshot::text, job.snapshot_sha256
+          , job.signing_key_id
         """;
     try (var connection = dataSource.getConnection()) {
       connection.setAutoCommit(false);
@@ -59,7 +60,7 @@ public final class JdbcXlsxExportRepository implements XlsxExportProcessor.Repos
           var job = new XlsxExportProcessor.Job(
               rows.getObject("id", UUID.class), rows.getObject("document_id", UUID.class),
               rows.getObject("document_version_id", UUID.class), rows.getObject("requested_by_user_id", UUID.class),
-              rows.getString("snapshot"), rows.getString("snapshot_sha256"));
+              rows.getString("snapshot"), rows.getString("snapshot_sha256"), rows.getString("signing_key_id"));
           connection.commit();
           return Optional.of(job);
         }

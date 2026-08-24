@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 class XlsxManifestCodecTest {
   @Test
-  void verifiesOnlyTheOriginalManifestPayload() {
+  void verifiesOnlyTheOriginalManifestPayload() throws Exception {
     XlsxManifestCodec codec = new XlsxManifestCodec();
     XlsxManifestCodec.SignedManifest signed = codec.sign("job-1|snapshot|1000", "secret".getBytes());
     assertDoesNotThrow(() -> codec.verify(signed, "secret".getBytes()));

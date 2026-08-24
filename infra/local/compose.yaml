@@ -57,6 +57,10 @@ services:
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
       WORKER_ID: local-worker
+      XLSX_MANIFEST_KEY_ID: local-development
+      XLSX_MANIFEST_SECRET: local-development-only-secret-change-in-production
+      APPLICATION_INTERNAL_URL: http://host.docker.internal:3000
+      WORKER_CALLBACK_SECRET: local-worker-callback-secret-change-in-production
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,7 +76,7 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    networks: [conversion-backend]
+    networks: [conversion-backend, test-host]
     restart: unless-stopped
 
 volumes:

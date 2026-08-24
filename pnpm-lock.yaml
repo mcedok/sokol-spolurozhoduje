@@ -11,12 +11,18 @@ importers:
       '@azure/storage-blob':
         specifier: 12.33.0
         version: 12.33.0(supports-color@10.2.2)
+      '@fastify/busboy':
+        specifier: 3.2.0
+        version: 3.2.0
       '@node-rs/argon2':
         specifier: ^2.1.0
         version: 2.1.0
       '@tanstack/react-virtual':
         specifier: 3.14.9
         version: 3.14.9(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      fflate:
+        specifier: 0.8.2
+        version: 0.8.2
       next:
         specifier: 16.2.11
         version: 16.2.11(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -453,6 +459,9 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@fastify/busboy@3.2.0':
+    resolution: {integrity: sha512-m9FVDXU3GT2ITSe0UaMA5rU3QkfC/UXtCU8y0gSN/GugTqtVldOBWIB5V6V3sbmenVZUIpU6f+mPEO2+m5iTaA==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -1413,6 +1422,9 @@ packages:
 
   fflate@0.7.5:
     resolution: {integrity: sha512-QieYf//cis6ywHNi5qW1+PXPQ4bC+XVJAtS4AXIML8P76GroEiOxm/oQtn1f02UkJY1+KsXMJcC+R2v/Eg4G3g==}
+
+  fflate@0.8.2:
+    resolution: {integrity: sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A==}
 
   fill-range@7.1.1:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
@@ -2515,6 +2527,8 @@ snapshots:
     optionalDependencies:
       '@noble/hashes': 2.3.0
 
+  '@fastify/busboy@3.2.0': {}
+
   '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.34.5':
@@ -3338,6 +3352,8 @@ snapshots:
       picomatch: 4.0.5
 
   fflate@0.7.5: {}
+
+  fflate@0.8.2: {}
 
   fill-range@7.1.1:
     dependencies:

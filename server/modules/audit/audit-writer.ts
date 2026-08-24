@@ -64,7 +64,7 @@ export async function appendAudit(
   };
   await tx`select pg_advisory_xact_lock(hashtext('audit_events'))`;
   const [previous] = await tx<{ event_hash: string }[]>`
-    select event_hash from audit_events order by created_at desc, id desc limit 1
+    select event_hash from audit_events order by chain_sequence desc limit 1
   `;
   const previousHash = previous?.event_hash ?? null;
   const canonicalEvent = canonicalJson({
@@ -85,11 +85,11 @@ export async function appendAudit(
   await tx`
     insert into audit_events (
       actor_user_id, actor_role, action, target_type, target_id, outcome,
-      correlation_id, metadata, previous_hash, event_hash
+      correlation_id, metadata, previous_hash, event_hash, created_at
     ) values (
       ${input.actor?.userId ?? null}, ${input.actor?.role ?? null}, ${input.action},
       ${input.targetType}, ${input.targetId ?? null}, ${outcome},
-      ${input.correlationId}, ${tx.json(metadata)}, ${previousHash}, ${eventHash}
+      ${input.correlationId}, ${tx.json(metadata)}, ${previousHash}, ${eventHash}, clock_timestamp()
     )
   `;
 }

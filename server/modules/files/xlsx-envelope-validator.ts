@@ -14,7 +14,7 @@ export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsh
 export interface XlsxUploadInput {
   fileName: string;
   contentType: string;
-  contentLength: number;
+  contentLength?: number;
   body: NodeJS.ReadableStream;
 }
 
@@ -65,7 +65,8 @@ export async function stageAndValidateXlsx(input: XlsxUploadInput, config: FileC
   const safeName = basename(input.fileName);
   if (safeName !== input.fileName || !safeName.toLowerCase().endsWith(".xlsx")) throw invalid("Je povolen pouze bezpečný název XLSX souboru.");
   if (input.contentType !== XLSX_MIME) throw invalid("Soubor nemá povolený typ XLSX.");
-  if (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0 || input.contentLength > config.maxUploadBytes) {
+  if (input.contentLength !== undefined
+    && (!Number.isSafeInteger(input.contentLength) || input.contentLength <= 0 || input.contentLength > config.maxUploadBytes)) {
     throw invalid("Soubor překračuje povolenou velikost 25 MiB.");
   }
   const directory = await mkdtemp(join(tmpdir(), "sokol-xlsx-"));
@@ -89,7 +90,10 @@ export async function stageAndValidateXlsx(input: XlsxUploadInput, config: FileC
   }, 120_000);
   try {
     await pipeline(input.body, limiter, createWriteStream(path, { flags: "wx" }));
-    if (sizeBytes !== input.contentLength) throw invalid("Velikost souboru neodpovídá hlavičce požadavku.");
+    if (sizeBytes <= 0) throw invalid("XLSX soubor je prázdný.");
+    if (input.contentLength !== undefined && sizeBytes !== input.contentLength) {
+      throw invalid("Velikost souboru neodpovídá deklarované velikosti.");
+    }
     const handle = await open(path, "r");
     const signature = Buffer.alloc(4);
     await handle.read(signature, 0, 4, 0);

@@ -118,6 +118,7 @@ export async function loadPdfExportSource(
     join block_revisions revision on revision.block_revision_id = thread.target_block_revision_id
     join users author on author.id = comment.author_user_id
     left join settlements settlement on settlement.comment_id = comment.id
+      and settlement.voided_at is null
     left join document_versions target on target.id = settlement.target_document_version_id
     where thread.document_id = ${documentId}
     order by revision.block_order, comment.public_id
