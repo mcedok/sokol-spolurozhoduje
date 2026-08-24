@@ -143,7 +143,7 @@ function startDevServer() {
     [cli, "dev", "--host", APP_HOST, "--port", String(APP_PORT)],
     {
       cwd: PROJECT_ROOT,
-      env: { ...process.env, NO_COLOR: "1" },
+      env: { ...process.env, NEXT_PUBLIC_DATA_BACKEND: "browser", NO_COLOR: "1" },
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     },

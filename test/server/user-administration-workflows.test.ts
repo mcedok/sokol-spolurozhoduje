@@ -158,7 +158,7 @@ describe("server-side user administration", () => {
     `;
     expect(events).toEqual([{ outcome: "allowed" }]);
 
-    await testSql`delete from audit_events`;
+    await testSql`truncate audit_events restart identity`;
     const admin = await actorFor("admin");
     await expect(users.listUsers(admin, {})).rejects.toMatchObject({ status: 403 });
     events = await testSql<{ outcome: string }[]>`

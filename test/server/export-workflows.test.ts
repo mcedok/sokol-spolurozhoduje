@@ -94,7 +94,7 @@ async function seedExportSource() {
       ${owner.id}, ${versionId}, 'CANARY-INTERNAL-NOTE'
     )
   `;
-  return { owner, member, documentId, versionId };
+  return { owner, member, documentId, versionId, commentId };
 }
 
 describe("PDF export workflows", () => {
@@ -222,5 +222,37 @@ describe("PDF export workflows", () => {
       action: "pdf_export.download_denied",
       metadata: { reason: "FORBIDDEN" },
     });
+  });
+
+  it("exports only the active settlement after a comment was reopened and settled again", async () => {
+    const seeded = await seedExportSource();
+    await testSql`
+      update settlements set voided_at=now(), voided_by_user_id=${seeded.owner.id},
+        void_reason='Znovuotevření po revizi' where comment_id=${seeded.commentId} and voided_at is null
+    `;
+    await testSql`
+      insert into settlements (id, comment_id, outcome, statement, responsible_user_id,
+        settled_by_user_id, target_document_version_id)
+      values (${crypto.randomUUID()}, ${seeded.commentId}, 'rejected', 'Aktuální stanovisko.',
+        ${seeded.owner.id}, ${seeded.owner.id}, ${seeded.versionId})
+    `;
+    const sessionId = crypto.randomUUID();
+    await testSql`
+      insert into sessions (id, user_id, token_hash, csrf_hash, expires_at)
+      values (${sessionId}, ${seeded.owner.id}, ${"f".repeat(64)}, ${"1".repeat(64)}, now() + interval '1 day')
+    `;
+    const { createExportService } = await loadService();
+    const job = await createExportService({ sql: testSql }).createExport({
+      userId: seeded.owner.id, role: "admin", sessionId,
+    }, seeded.documentId, {
+      documentVersionId: seeded.versionId,
+      visibility: "public",
+      idempotencyKey: crypto.randomUUID(),
+    });
+    const [stored] = await testSql<{ snapshot: { comments: Array<{ settlement: { statement: string } | null }> } }[]>`
+      select snapshot from export_jobs where id=${job.id}
+    `;
+    expect(stored.snapshot.comments).toHaveLength(1);
+    expect(stored.snapshot.comments[0].settlement?.statement).toBe("Aktuální stanovisko.");
   });
 });

@@ -85,7 +85,7 @@ public final class JdbcQuarantineRetentionRepository implements QuarantineRetent
     }
     String previousHash = null;
     try (var statement = connection.prepareStatement(
-        "select event_hash from audit_events order by created_at desc,id desc limit 1");
+        "select event_hash from audit_events order by chain_sequence desc limit 1");
          var rows = statement.executeQuery()) {
       if (rows.next()) previousHash = rows.getString(1);
     }
@@ -104,8 +104,8 @@ public final class JdbcQuarantineRetentionRepository implements QuarantineRetent
     String eventHash = sha256((previousHash == null ? "" : previousHash) + canonical);
     try (var statement = connection.prepareStatement("""
         insert into audit_events(
-          action,target_type,target_id,outcome,correlation_id,metadata,previous_hash,event_hash)
-        values ('file.quarantine_deleted','file_object',?,'allowed',?,'{}'::jsonb,?,?)
+          action,target_type,target_id,outcome,correlation_id,metadata,previous_hash,event_hash,created_at)
+        values ('file.quarantine_deleted','file_object',?,'allowed',?,'{}'::jsonb,?,?,clock_timestamp())
         """)) {
       statement.setObject(1, targetId);
       statement.setObject(2, correlationId);

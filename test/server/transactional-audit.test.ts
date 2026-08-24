@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { appendDeniedAudit } from "../../server/modules/audit/audit-writer";
+import { appendAudit, appendDeniedAudit } from "../../server/modules/audit/audit-writer";
+import { withTransaction } from "../../server/db/client";
 import { appendOutbox } from "../../server/modules/outbox/outbox-writer";
 import { executeCommand } from "../../server/modules/shared/command-context";
 import {
@@ -89,5 +90,42 @@ describe("transactional audit", () => {
       outcome: "denied",
       metadata: { code: "[REDACTED]", reason: "not_owner" },
     });
+  });
+
+  it("keeps one linear hash chain for multiple events in the same transaction", async () => {
+    const actor = await seedActiveAdmin();
+    const firstAction = "xlsx_import.row_classified";
+    const secondAction = "xlsx_import.row_applied";
+    await withTransaction(testSql, async (tx) => {
+      await tx`
+        insert into audit_events (
+          id, actor_user_id, actor_role, action, target_type, outcome,
+          correlation_id, metadata, event_hash
+        ) values (
+          'ffffffff-ffff-ffff-ffff-ffffffffffff', ${actor.id}, 'admin', 'seed',
+          'test', 'allowed', ${crypto.randomUUID()}, '{}', ${"f".repeat(64)}
+        )
+      `;
+      const auditActor = { userId: actor.id, role: "admin" as const, sessionId: crypto.randomUUID() };
+      await appendAudit(tx, {
+        actor: auditActor, action: firstAction, targetType: "comment",
+        targetId: crypto.randomUUID(), correlationId: crypto.randomUUID(),
+      }, "allowed");
+      await appendAudit(tx, {
+        actor: auditActor, action: secondAction, targetType: "comment",
+        targetId: crypto.randomUUID(), correlationId: crypto.randomUUID(),
+      }, "allowed");
+    });
+
+    const events = await testSql<{ action: string; previous_hash: string | null; event_hash: string }[]>`
+      select action, previous_hash, event_hash from audit_events
+      where action in (${firstAction}, ${secondAction}) order by created_at, id
+    `;
+    const classified = events.find((event) => event.action === firstAction)!;
+    const applied = events.find((event) => event.action === secondAction)!;
+    expect(applied.previous_hash).toBe(classified.event_hash);
+    await expect(testSql`
+      update audit_events set action='tampered' where event_hash=${applied.event_hash}
+    `).rejects.toMatchObject({ code: "P0001" });
   });
 });

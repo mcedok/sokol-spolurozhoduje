@@ -23,6 +23,10 @@
 
 * { box-sizing: border-box; }
 .srOnly { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0, 0, 0, 0) !important; white-space: nowrap !important; border: 0 !important; }
+.xlsxConflictList { display: grid; gap: 12px; margin-top: 16px; }
+.xlsxConflictCard { padding: 14px; border: 1px solid var(--line); border-left: 4px solid var(--red); background: white; }
+.xlsxConflictCard p { margin: 4px 0; overflow-wrap: anywhere; }
+.xlsxWorkingPanel .isDisabled { opacity: .55; cursor: not-allowed; }
 html { scroll-behavior: smooth; }
 html, body { margin: 0; min-height: 100%; background: var(--canvas); color: var(--ink); }
 body { font-family: Arial, "Segoe UI", sans-serif; font-size: 15px; }

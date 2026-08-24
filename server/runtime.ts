@@ -8,11 +8,14 @@ import { createUserService } from "./modules/identity/user-service";
 import { createDocumentService } from "./modules/documents/document-service";
 import { createAzureBlobStorage } from "./modules/files/azure-blob-storage";
 import { fileConfig } from "./modules/files/file-config";
+import type { FileConfig } from "./modules/files/file-config";
 import { createUploadService } from "./modules/files/upload-service";
 import { createConversionService } from "./modules/conversion/conversion-service";
 import { createFileDownloadService } from "./modules/files/file-download-service";
 import { createVersioningService } from "./modules/versioning/versioning-service";
 import { createExportService } from "./modules/exports/export-service";
+import { createXlsxExportService } from "./modules/xlsx/xlsx-export-service";
+import { createXlsxImportService } from "./modules/xlsx/xlsx-import-service";
 
 export interface IdentityRuntime {
   sql: Sql;
@@ -21,11 +24,14 @@ export interface IdentityRuntime {
   users: ReturnType<typeof createUserService>;
   documents: ReturnType<typeof createDocumentService>;
   files: ReturnType<typeof createAzureBlobStorage>;
+  fileConfig: FileConfig;
   uploads: ReturnType<typeof createUploadService>;
   conversions: ReturnType<typeof createConversionService>;
   downloads: ReturnType<typeof createFileDownloadService>;
   versioning: ReturnType<typeof createVersioningService>;
   exports: ReturnType<typeof createExportService>;
+  xlsxExports: ReturnType<typeof createXlsxExportService>;
+  xlsxImports: ReturnType<typeof createXlsxImportService>;
 }
 
 let identityRuntime: IdentityRuntime | undefined;
@@ -48,6 +54,7 @@ export function getIdentityRuntime(): IdentityRuntime {
     users: createUserService({ sql, secrets }),
     documents: createDocumentService({ sql }),
     files,
+    fileConfig: config,
     uploads: createUploadService({ sql, storage: files, config }),
     conversions: createConversionService({ sql }),
     downloads: createFileDownloadService({
@@ -57,6 +64,8 @@ export function getIdentityRuntime(): IdentityRuntime {
     }),
     versioning: createVersioningService({ sql }),
     exports: createExportService({ sql }),
+    xlsxExports: createXlsxExportService({ sql }),
+    xlsxImports: createXlsxImportService({ sql }),
   };
   return identityRuntime;
 }

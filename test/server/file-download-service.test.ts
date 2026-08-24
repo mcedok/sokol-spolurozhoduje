@@ -51,6 +51,24 @@ async function seedFile(objectStatus: "quarantined" | "archived") {
 }
 
 describe("file download service", () => {
+  it("allows the document owner to download a completed XLSX derivative", async () => {
+    const owner = await seedActiveAdmin();
+    const documentId = crypto.randomUUID();
+    const fileId = crypto.randomUUID();
+    await testSql`insert into documents(id,number,title,owner_admin_id,status)
+      values (${documentId},'SOKOL-2099-999001','XLSX export',${owner.id},'ready')`;
+    await testSql`
+      insert into file_objects(id,document_id,data_owner_user_id,purpose,container,object_key,original_name,
+        declared_mime,detected_mime,size_bytes,sha256,av_status,object_status)
+      values (${fileId},${documentId},${owner.id},'xlsx_export','derivatives',${`${documentId}/export.xlsx`},'export.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',42,${"c".repeat(64)},'clean','derivative')
+    `;
+    const service = createFileDownloadService({ sql: testSql, storage: storageDouble(), ttlSeconds: 300 });
+    await expect(service.createReadLink({ userId: owner.id, role: "admin", sessionId: crypto.randomUUID() }, fileId))
+      .resolves.toMatchObject({ url: expect.stringContaining("storage.example") });
+  });
+
   it("creates a five-minute link for the owner without auditing the URL or object key", async () => {
     const { owner, fileId } = await seedFile("archived");
     const storage = storageDouble();

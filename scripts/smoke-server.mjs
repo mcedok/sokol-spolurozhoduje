@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { hash } from "@node-rs/argon2";
 import { generateSecret, generateSync } from "otplib";
 import postgres from "postgres";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { assertMatchingDisposableSmokeDatabases } from "./smoke-safety.mjs";
 
 const hostDatabaseUrl = process.env.DATABASE_URL ??
@@ -19,8 +20,11 @@ const dockerEnvironment = isAbsolute(docker)
   : process.env;
 const image = process.env.SMOKE_IMAGE ?? "sokol-spolurozhoduje:phase-a";
 const operationsImage = `${image}-operations`;
+const workerImage = `${image}-worker`;
 const port = Number(process.env.SMOKE_PORT ?? 33117);
 const containerName = `sokol-phase-a-smoke-${process.pid}`;
+const workerContainerName = `${containerName}-worker`;
+const smokeNetworkName = `${containerName}-network`;
 const origin = `http://127.0.0.1:${port}`;
 const keys = {
   session: "smoke-session-key-12345678901234567890",
@@ -35,8 +39,10 @@ const smokeStorageConnection = process.env.SMOKE_STORAGE_CONNECTION_STRING
     + "BlobEndpoint=http://host.docker.internal:10000/devstoreaccount1;";
 const sql = postgres(hostDatabaseUrl, { max: 2 });
 let container;
+let workerContainer;
 let assertions = 0;
 let logs = "";
+let workerLogs = "";
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
@@ -109,6 +115,49 @@ async function request(path, { method = "GET", body, cookie, csrf, idempotencyKe
   return { response, data, cookie: cookieFrom(response) };
 }
 
+async function uploadXlsx(path, bytes, { cookie, csrf }) {
+  const form = new FormData();
+  form.set("file", new Blob([bytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  }), "smoke-working.xlsx");
+  const response = await fetch(`${origin}${path}`, {
+    method: "POST",
+    headers: {
+      cookie,
+      "x-csrf-token": csrf,
+      "idempotency-key": randomUUID(),
+    },
+    body: form,
+  });
+  const data = await response.json();
+  return { response, data, cookie: cookieFrom(response) };
+}
+
+async function poll(path, cookie, terminal, label) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const result = await request(path, { cookie });
+    if (terminal.includes(result.data?.status)) return result;
+    await delay(500);
+  }
+  throw new Error(`${label} nebyl dokončen do 40 sekund.`);
+}
+
+function changeFirstRowPriority(bytes, priority) {
+  const archive = unzipSync(new Uint8Array(bytes));
+  const sheetName = Object.keys(archive).find((name) => name.toLowerCase() === "xl/worksheets/sheet2.xml");
+  if (!sheetName) throw new Error("Pracovní list Vypořádání nebyl v XLSX nalezen.");
+  const xml = strFromU8(archive[sheetName]);
+  let changed = false;
+  const updated = xml.replace(/<c([^>]*\br="I2"[^>]*)>[\s\S]*?<\/c>/, (_cell, attributes) => {
+    changed = true;
+    const cleaned = attributes.replace(/\s+t="[^"]*"/g, "");
+    return `<c${cleaned} t="inlineStr"><is><t>${priority}</t></is></c>`;
+  });
+  if (!changed) throw new Error("Buňku priority I2 se nepodařilo v XLSX změnit.");
+  archive[sheetName] = strToU8(updated);
+  return zipSync(archive, { level: 6 });
+}
+
 async function expectStatus(result, status, label) {
   check(result.response.status === status,
     `${label} (${result.response.status}${result.data?.code ? ` ${result.data.code}` : ""})`);
@@ -164,6 +213,11 @@ async function run() {
       "build", "--target", "operations", "--tag", operationsImage, ".",
     ], { cwd: process.cwd(), env: dockerEnvironment, stdio: "inherit" });
     check(operationsBuild.status === 0, "aktuální operační Docker image");
+    const workerBuild = spawnSync(docker, [
+      "build", "--file", "worker/Dockerfile", "--target", "runtime",
+      "--tag", workerImage, ".",
+    ], { cwd: process.cwd(), env: dockerEnvironment, stdio: "inherit" });
+    check(workerBuild.status === 0, "aktuální XLSX worker Docker image");
   }
   const migrate = spawnSync(docker, [
     "run", "--rm", "--add-host", "host.docker.internal:host-gateway",
@@ -174,8 +228,13 @@ async function run() {
   const superadminAccount = await resetAndSeed();
 
   check(!(await portIsOpen()), `port ${port} je před testem volný`);
+  const network = spawnSync(docker, ["network", "create", smokeNetworkName], {
+    env: dockerEnvironment, stdio: "ignore",
+  });
+  check(network.status === 0, "dočasná izolovaná Docker síť");
   container = spawn(docker, [
     "run", "--rm", "--name", containerName,
+    "--network", smokeNetworkName,
     "--add-host", "host.docker.internal:host-gateway",
     "-p", `127.0.0.1:${port}:3000`,
     "-e", `DATABASE_URL=${containerDatabaseUrl}`,
@@ -186,6 +245,8 @@ async function run() {
     "-e", `APP_ORIGIN=${origin}`,
     "-e", `AZURE_STORAGE_CONNECTION_STRING=${smokeStorageConnection}`,
     "-e", "AZURE_BLOB_ENDPOINT=http://localhost:10000/devstoreaccount1",
+    "-e", "XLSX_MANIFEST_KEY_ID=smoke-xlsx-key",
+    "-e", "WORKER_CALLBACK_SECRET=smoke-worker-callback-secret",
     image,
   ], { env: dockerEnvironment, stdio: ["ignore", "pipe", "pipe"] });
   logs = "";
@@ -305,6 +366,103 @@ async function run() {
       ${adminUserId}, now()
     )
   `;
+  const [{ id: memberUserId }] = await sql`
+    select id from users where email='clen.smoke@example.cz'
+  `;
+  const blockUid = randomUUID();
+  const blockRevisionId = randomUUID();
+  const threadId = randomUUID();
+  const commentId = randomUUID();
+  await sql`insert into document_blocks (block_uid, document_id) values (${blockUid}, ${currentDocument.id})`;
+  await sql`
+    insert into block_revisions (
+      block_revision_id, block_uid, document_version_id, block_order, block_type,
+      structured_content, plain_text, normalized_hash, parser_version, revision_origin
+    ) values (
+      ${blockRevisionId}, ${blockUid}, ${versionId}, 1, 'paragraph', '{}',
+      'Smoke blok', ${"a".repeat(64)}, 'smoke', 'converted'
+    )
+  `;
+  await sql`
+    insert into comment_threads (
+      id, public_id, document_id, block_uid, target_block_revision_id, created_by_user_id
+    ) values (
+      ${threadId}, 'VLAK-2026-990001', ${currentDocument.id}, ${blockUid},
+      ${blockRevisionId}, ${memberUserId}
+    )
+  `;
+  await sql`
+    insert into comments (
+      id, public_id, thread_id, author_user_id, author_name_snapshot,
+      organization_name_snapshot, body, comment_type, priority, status
+    ) values (
+      ${commentId}, 'PRIP-2026-990001', ${threadId}, ${memberUserId},
+      'Jan Člen', 'TJ Sokol Smoke', 'Smoke připomínka', 'comment', 'normal', 'open'
+    )
+  `;
+
+  workerContainer = spawn(docker, [
+    "run", "--rm", "--name", workerContainerName,
+    "--network", smokeNetworkName,
+    "--add-host", "host.docker.internal:host-gateway",
+    "-e", `DATABASE_URL=jdbc:postgresql://host.docker.internal:55432/sokol_test`,
+    "-e", "DATABASE_USER=sokol",
+    "-e", "DATABASE_PASSWORD=local-only-password",
+    "-e", `AZURE_STORAGE_CONNECTION_STRING=${smokeStorageConnection}`,
+    "-e", "CLAMAV_HOST=host.docker.internal",
+    "-e", "CLAMAV_PORT=3310",
+    "-e", "WORKER_ID=smoke-xlsx-worker",
+    "-e", "XLSX_MANIFEST_KEY_ID=smoke-xlsx-key",
+    "-e", "XLSX_MANIFEST_SECRET=smoke-xlsx-signing-secret",
+    "-e", `APPLICATION_INTERNAL_URL=http://${containerName}:3000`,
+    "-e", "WORKER_CALLBACK_SECRET=smoke-worker-callback-secret",
+    workerImage,
+  ], { env: dockerEnvironment, stdio: ["ignore", "pipe", "pipe"] });
+  workerLogs = "";
+  workerContainer.stdout.on("data", (chunk) => { workerLogs += chunk; });
+  workerContainer.stderr.on("data", (chunk) => { workerLogs += chunk; });
+
+  const xlsxExport = await expectStatus(await request(
+    `/api/documents/${currentDocument.id}/xlsx-exports`, {
+      method: "POST", cookie: admin.cookie, csrf: admin.csrf,
+      idempotencyKey: randomUUID(), body: { documentVersionId: versionId },
+    },
+  ), 202, "založení pracovního XLSX exportu");
+  const completedXlsx = await expectStatus(await poll(
+    `/api/xlsx-exports/${xlsxExport.data.id}`, admin.cookie, ["completed", "failed"], "XLSX export",
+  ), 200, "dokončení pracovního XLSX exportu");
+  check(completedXlsx.data.status === "completed" && completedXlsx.data.downloadReady,
+    "worker dokončil pracovní XLSX export");
+  const xlsxLink = await expectStatus(await request(
+    `/api/xlsx-exports/${xlsxExport.data.id}/download-link`, { cookie: admin.cookie },
+  ), 200, "odkaz pracovního XLSX");
+  const hostDownloadUrl = new URL(xlsxLink.data.url);
+  hostDownloadUrl.hostname = "127.0.0.1";
+  hostDownloadUrl.port = "10000";
+  const downloadedXlsx = await fetch(hostDownloadUrl);
+  check(downloadedXlsx.ok, "pracovní XLSX lze stáhnout z objektového úložiště");
+  const changedXlsx = changeFirstRowPriority(await downloadedXlsx.arrayBuffer(), "high");
+  const acceptedXlsx = await expectStatus(await uploadXlsx(
+    `/api/documents/${currentDocument.id}/xlsx-imports?exportJobId=${xlsxExport.data.id}`,
+    changedXlsx,
+    admin,
+  ), 202, "upload upraveného pracovního XLSX");
+  const completedImport = await expectStatus(await poll(
+    `/api/xlsx-imports/${acceptedXlsx.data.id}`, admin.cookie, ["completed", "failed", "awaiting_resolution"],
+    "XLSX import",
+  ), 200, "dokončení pracovního XLSX importu");
+  check(completedImport.data.status === "completed", "bezkonfliktní XLSX změna se použila automaticky");
+  const [changedComment] = await sql`select priority from comments where id=${commentId}`;
+  check(changedComment.priority === "high", "XLSX import změnil prioritu připomínky");
+  const xlsxAudit = await sql`
+    select action from audit_events
+    where target_id in (${xlsxExport.data.id}, ${acceptedXlsx.data.id}, ${commentId})
+  `;
+  check(xlsxAudit.some((row) => row.action === "xlsx_import.worker_compared"),
+    "worker zapsal hashovaný audit porovnání XLSX");
+  check(xlsxAudit.some((row) => row.action === "xlsx_import.row_applied"),
+    "automatická změna má řádkový hashovaný audit");
+
   const publicExport = await expectStatus(await request(
     `/api/documents/${currentDocument.id}/exports`, {
       method: "POST", cookie: admin.cookie, csrf: admin.csrf,
@@ -412,11 +570,19 @@ async function run() {
 }
 
 async function cleanup() {
+  if (workerContainer && workerContainer.exitCode === null) {
+    spawnSync(docker, ["stop", "--time", "5", workerContainerName], {
+      env: dockerEnvironment, stdio: "ignore",
+    });
+  }
   if (container && container.exitCode === null) {
     spawnSync(docker, ["stop", "--time", "5", containerName], {
       env: dockerEnvironment, stdio: "ignore",
     });
   }
+  spawnSync(docker, ["network", "rm", smokeNetworkName], {
+    env: dockerEnvironment, stdio: "ignore",
+  });
   await sql.end({ timeout: 2 });
   for (let attempt = 0; attempt < 20 && await portIsOpen(); attempt += 1) await delay(250);
   check(!(await portIsOpen()), `port ${port} je po testu uvolněný`);
@@ -429,6 +595,9 @@ try {
   process.stderr.write(`SMOKE FAIL: ${error.stack ?? error}\n`);
   if (typeof logs === "string" && logs) {
     process.stderr.write(`SERVER LOGS:\n${logs.slice(-20_000)}\n`);
+  }
+  if (typeof workerLogs === "string" && workerLogs) {
+    process.stderr.write(`WORKER LOGS:\n${workerLogs.slice(-20_000)}\n`);
   }
   process.exitCode = 1;
 } finally {

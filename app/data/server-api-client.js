@@ -227,6 +227,51 @@ export function createServerApiClient({
   const getPdfExport = (jobId) => request(`/api/export-jobs/${jobId}`);
   const getPdfExportDownloadLink = (jobId) =>
     request(`/api/export-jobs/${jobId}/download-link`);
+  const createXlsxExport = (documentId, documentVersionId) => request(`/api/documents/${documentId}/xlsx-exports`, {
+    method: "POST", body: { documentVersionId }, idempotencyKey: crypto.randomUUID(),
+  });
+  const getXlsxExport = (jobId) => request(`/api/xlsx-exports/${jobId}`);
+  const getXlsxExportDownloadLink = (jobId) => request(`/api/xlsx-exports/${jobId}/download-link`);
+  const uploadXlsxImport = async (documentId, file, exportJobId) => {
+    const form = new FormData(); form.set("file", file);
+    const response = await fetchImpl(`/api/documents/${documentId}/xlsx-imports?exportJobId=${encodeURIComponent(exportJobId || "")}`, {
+      method: "POST", credentials: "same-origin", body: form,
+      headers: { "idempotency-key": crypto.randomUUID(), ...(readCsrf() ? { "x-csrf-token": readCsrf() } : {}) },
+    });
+    const payload = response.headers.get("content-type")?.includes("json") ? await response.json() : null;
+    if (!response.ok) throw Object.assign(new Error(payload?.detail || "Import se nepodařilo dokončit."), { code: payload?.code, status: response.status });
+    return payload;
+  };
+  const getXlsxImport = (batchId) => request(`/api/xlsx-imports/${batchId}`);
+  const getXlsxImportRows = (batchId, classification = "conflict", offset = 0) => request(
+    `/api/xlsx-imports/${batchId}/rows?classification=${encodeURIComponent(classification)}&limit=100&offset=${offset}`,
+  );
+  const applySafeXlsxImport = (batchId, rowVersion) => request(
+    `/api/xlsx-imports/${batchId}/apply-safe`, {
+      method: "POST", body: {}, rowVersion, idempotencyKey: crypto.randomUUID(),
+    },
+  );
+  const decideXlsxConflict = (batchId, rowId, decision, rowVersion, reason) => request(
+    `/api/xlsx-imports/${batchId}/decisions`, {
+      method: "POST", body: { rowId, decision, reason }, rowVersion,
+      idempotencyKey: crypto.randomUUID(),
+    },
+  );
+  const applyXlsxConflicts = (batchId, rowVersion) => request(
+    `/api/xlsx-imports/${batchId}/apply-conflicts`, {
+      method: "POST", body: {}, rowVersion, idempotencyKey: crypto.randomUUID(),
+    },
+  );
+  const cancelXlsxImport = (batchId, rowVersion) => request(
+    `/api/xlsx-imports/${batchId}/cancel`, {
+      method: "POST", body: {}, rowVersion, idempotencyKey: crypto.randomUUID(),
+    },
+  );
+  const retryXlsxImport = (batchId, rowVersion) => request(
+    `/api/xlsx-imports/${batchId}/retry`, {
+      method: "POST", body: {}, rowVersion, idempotencyKey: crypto.randomUUID(),
+    },
+  );
 
   const auth = {
     backend: "server",
@@ -431,6 +476,17 @@ export function createServerApiClient({
     createPdfExport,
     getPdfExport,
     getPdfExportDownloadLink,
+    createXlsxExport,
+    getXlsxExport,
+    getXlsxExportDownloadLink,
+    uploadXlsxImport,
+    getXlsxImport,
+    getXlsxImportRows,
+    applySafeXlsxImport,
+    decideXlsxConflict,
+    applyXlsxConflicts,
+    cancelXlsxImport,
+    retryXlsxImport,
     auth,
     normService,
     userService,
