@@ -1,11 +1,11 @@
 const STATUS_LABELS = {
   concept: "Koncept",
-  file_check: "Koncept",
-  conversion: "Koncept",
-  conversion_review: "Koncept",
-  ready: "Ke schválení",
+  file_check: "Kontrola souboru",
+  conversion: "Převod dokumentu",
+  conversion_review: "Kontrola převodu",
+  ready: "Připraveno ke zveřejnění",
   published_open: "K připomínkování",
-  comments_closed: "Vypořádání",
+  comments_closed: "Připomínky uzavřeny",
   settlement: "Vypořádání",
   settled: "Ke schválení",
   approved: "Schváleno",
@@ -15,9 +15,11 @@ const STATUS_LABELS = {
 
 const SERVER_STATUS = {
   Koncept: "concept",
+  "Připraveno ke zveřejnění": "ready",
   "K připomínkování": "published_open",
-  Vypořádání: "comments_closed",
-  "Ke schválení": "ready",
+  "Připomínky uzavřeny": "comments_closed",
+  Vypořádání: "settlement",
+  "Ke schválení": "settled",
   Schváleno: "approved",
   Neschváleno: "rejected",
   Archivováno: "archived",
@@ -55,6 +57,53 @@ function adaptDocument(document) {
     needVotes: { yes: 0, no: 0 },
     file: null,
     latestReadyVersionId: document.latestReadyVersionId || null,
+  };
+}
+
+function resolutionLabel(settlement) {
+  if (!settlement) return "Nevypořádáno";
+  if (["accepted", "partially_accepted"].includes(settlement.outcome)) return "Zapracováno";
+  return "Nezapracováno";
+}
+
+function adaptPublicDetail(document) {
+  const comments = (document.threads || []).flatMap((thread) => thread.comments || []);
+  const roots = comments.filter((comment) => !comment.parentPublicId);
+  return {
+    ...adaptDocument(document),
+    id: document.publicId,
+    number: document.publicId,
+    version: document.version ? String(document.version.versionNumber) : "",
+    publishedAt: document.version?.publishedAt?.slice(0, 10) || document.createdAt?.slice(0, 10) || "",
+    content: document.version?.blocks || [],
+    file: document.version?.originalName
+      ? { name: document.version.originalName, publicId: document.publicId }
+      : null,
+    participationVersion: document.participationVersion,
+    needVotes: document.needVotes,
+    submissions: roots.map((comment) => ({
+      id: comment.publicId,
+      blockUid: comment.blockUid,
+      rowVersion: comment.rowVersion,
+      kind: comment.type === "proposal" ? "Návrh úpravy" : comment.type === "question" ? "Dotaz" : "Komentář",
+      section: `Blok ${(document.version?.blocks || []).findIndex((block) => block.blockUid === comment.blockUid) + 1}`,
+      title: comment.text.split(/\r?\n/)[0],
+      text: comment.text,
+      author: comment.authorName,
+      unit: comment.organizationName,
+      createdAt: comment.createdAt.slice(0, 10),
+      score: comment.score,
+      currentUserVote: comment.currentUserVote,
+      resolutionStatus: resolutionLabel(comment.settlement),
+      resolution: comment.settlement?.statement || "",
+      adminComment: "",
+      replies: comments.filter((reply) => reply.parentPublicId === comment.publicId).map((reply) => ({
+        id: reply.publicId,
+        author: reply.authorName,
+        text: reply.text,
+        createdAt: reply.createdAt.slice(0, 10),
+      })),
+    })),
   };
 }
 
@@ -126,7 +175,18 @@ export function createServerApiClient({
 
   async function bootstrap() {
     currentSnapshot = adaptBootstrapForPilotUi(await request("/api/bootstrap"));
+    if (currentSnapshot.viewer && !currentCsrfToken) {
+      const result = await request("/api/auth/session/csrf", {
+        method: "POST",
+        csrf: false,
+      });
+      currentCsrfToken = result.csrfToken;
+    }
     return currentSnapshot;
+  }
+
+  async function createPublicOriginalDownloadLink(publicId) {
+    return request(`/api/public/documents/${encodeURIComponent(publicId)}/original-download-link`);
   }
 
   const uploadDocumentVersion = (documentId, file, command) => request(
@@ -307,11 +367,16 @@ export function createServerApiClient({
       currentCsrfToken = result.csrfToken;
       return { id: "server-cookie", user: adaptViewer(result.user) };
     },
-    loginWithPassword: async ({ email, password }) => request("/api/auth/admin/password", {
-      method: "POST",
-      csrf: false,
-      body: { email, password },
-    }),
+    loginWithPassword: async ({ email, password }) => {
+      const result = await request("/api/auth/admin/password", {
+        method: "POST",
+        csrf: false,
+        body: { email, password },
+      });
+      if (result.kind === "mfa_required") return result;
+      currentCsrfToken = result.csrfToken;
+      return { id: "server-cookie", user: adaptViewer(result.user) };
+    },
     verifyAdminMfa: async ({ loginAttemptId, token }) => {
       const result = await request("/api/auth/admin/mfa", {
         method: "POST",
@@ -342,6 +407,10 @@ export function createServerApiClient({
   };
 
   const normService = {
+    async loadDetail(publicId) {
+      const result = await request(`/api/public/documents/${encodeURIComponent(publicId)}`);
+      return adaptPublicDetail(result.document);
+    },
     listPublicNorms(filter = "Všechny") {
       const closed = new Set(["Schváleno", "Neschváleno", "Archivováno"]);
       const active = new Set(["K připomínkování", "Vypořádání", "Ke schválení"]);
@@ -368,10 +437,19 @@ export function createServerApiClient({
           fourEyesRequired: patch.fourEyesRequired ?? current.fourEyesRequired ?? false,
         },
       });
+      const requestedStatus = SERVER_STATUS[patch.status];
+      if (requestedStatus && requestedStatus !== result.document.status) {
+        const transitioned = await request(`/api/documents/${documentId}/status`, {
+          method: "POST",
+          rowVersion: result.document.rowVersion,
+          idempotencyKey: crypto.randomUUID(),
+          body: { status: requestedStatus, reason: patch.closureReason || "" },
+        });
+        return { norm: adaptDocument(transitioned.document), message: "Norma a její stav byly aktualizovány." };
+      }
       return { norm: adaptDocument(result.document), message: "Norma byla aktualizována." };
     },
     async create(_sessionId, input, file) {
-      if (file) throw new Error("Nahrání DOCX bude zapnuto v následující etapě.");
       const result = await request("/api/documents", {
         method: "POST",
         idempotencyKey: crypto.randomUUID(),
@@ -382,7 +460,17 @@ export function createServerApiClient({
           fourEyesRequired: false,
         },
       });
-      return { norm: adaptDocument(result.document), message: "Norma byla založena." };
+      const norm = adaptDocument(result.document);
+      if (!file) return { norm, message: "Norma byla založena." };
+      const upload = await uploadDocumentVersion(norm.id, file, {
+        rowVersion: norm.rowVersion,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      return {
+        norm,
+        upload,
+        message: "Norma byla založena a dokument byl zařazen ke zpracování.",
+      };
     },
     async changeStatus(_sessionId, documentId, status, reason, rowVersion) {
       const result = await request(`/api/documents/${documentId}/status`, {
@@ -395,10 +483,36 @@ export function createServerApiClient({
     },
     replaceDocument: async () => { throw new Error("Nahrání DOCX bude zapnuto v následující etapě."); },
     remove: async () => { throw new Error("Mazání dokumentů není v produkčním workflow povoleno."); },
-    addContribution: async () => { throw new Error("Blokové připomínky budou zapnuty v následující etapě."); },
-    reply: async () => { throw new Error("Odpovědi budou zapnuty v následující etapě."); },
-    voteSubmission: async () => { throw new Error("Hlasování bude zapnuto v následující etapě."); },
-    voteNeed: async () => { throw new Error("Hlasování bude zapnuto v následující etapě."); },
+    async addContribution(_sessionId, publicId, input) {
+      return request(`/api/public/documents/${encodeURIComponent(publicId)}/blocks/${input.blockUid}/comments`, {
+        method: "POST",
+        rowVersion: input.participationVersion,
+        idempotencyKey: crypto.randomUUID(),
+        body: {
+          type: input.kind === "Návrh úpravy" ? "proposal" : "comment",
+          text: input.text,
+          priority: input.priority || "normal",
+        },
+      });
+    },
+    async reply(_sessionId, _publicId, commentPublicId, text, participationVersion) {
+      return request(`/api/public/comments/${commentPublicId}/replies`, {
+        method: "POST", rowVersion: participationVersion, idempotencyKey: crypto.randomUUID(),
+        body: { text },
+      });
+    },
+    async voteSubmission(_sessionId, _publicId, commentPublicId, direction, commentRowVersion, participationVersion) {
+      return request(`/api/public/comments/${commentPublicId}/vote`, {
+        method: "PUT", rowVersion: participationVersion, idempotencyKey: crypto.randomUUID(),
+        body: { value: direction, commentRowVersion },
+      });
+    },
+    async voteNeed(_sessionId, publicId, value, participationVersion) {
+      return request(`/api/public/documents/${encodeURIComponent(publicId)}/need-vote`, {
+        method: "PUT", rowVersion: participationVersion, idempotencyKey: crypto.randomUUID(),
+        body: { value },
+      });
+    },
     resolveSubmission: async () => { throw new Error("Vypořádání bude zapnuto v následující etapě."); },
   };
 
@@ -487,6 +601,7 @@ export function createServerApiClient({
     applyXlsxConflicts,
     cancelXlsxImport,
     retryXlsxImport,
+    createPublicOriginalDownloadLink,
     auth,
     normService,
     userService,

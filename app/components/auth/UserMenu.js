@@ -6,12 +6,17 @@ const ROLE_LABELS = {
   superadmin: "Superadministrátor",
 };
 
-export function UserMenu({ currentUser, onLogin, onProfile, onLogout }) {
+export function UserMenu({ currentUser, loginDisabled = false, onLogin, onProfile, onLogout }) {
   if (!currentUser) {
     return h(
       "div",
       { className: "userMenu signedOut" },
-      h("button", { type: "button", className: "primaryButton small", onClick: onLogin }, "Přihlásit"),
+      h("button", {
+        type: "button",
+        className: "primaryButton small",
+        disabled: loginDisabled,
+        onClick: onLogin,
+      }, "Přihlásit"),
     );
   }
 

@@ -71,9 +71,13 @@ export function useAppController({ createServices = createDefaultServices } = {}
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [setupDeliveries, setSetupDeliveries] = useState([]);
   const [ready, setReady] = useState(false);
+  const [initializationFailed, setInitializationFailed] = useState(false);
+  const [initializationAttempt, setInitializationAttempt] = useState(0);
   const [services, setServices] = useState(null);
   const servicesRef = useRef(null);
+  const createServicesRef = useRef(createServices);
   const feedbackTimerRef = useRef(null);
+  createServicesRef.current = createServices;
 
   const refresh = useCallback(async (preferredSessionId) => {
     const bundle = servicesRef.current;
@@ -107,10 +111,11 @@ export function useAppController({ createServices = createDefaultServices } = {}
 
   useEffect(() => {
     let active = true;
-    const bundle = createServices();
+    const bundle = createServicesRef.current();
     servicesRef.current = null;
     setServices(null);
     setReady(false);
+    setInitializationFailed(false);
 
     const initialSnapshot = bundle.backend === "browser" ? bundle.repository.read?.() : null;
     if (initialSnapshot?.recoveryRequired) {
@@ -137,9 +142,10 @@ export function useAppController({ createServices = createDefaultServices } = {}
       servicesRef.current = null;
       setServices(null);
       setReady(false);
+      setInitializationFailed(true);
       setAuthMode(null);
       flash(
-        `${error?.message || "Modelové účty se nepodařilo připravit."} Načtěte stránku znovu.`,
+        `${error?.message || "Aplikaci se nepodařilo načíst."} Zkuste načtení zopakovat.`,
         "error",
       );
     });
@@ -148,7 +154,12 @@ export function useAppController({ createServices = createDefaultServices } = {}
       active = false;
       if (feedbackTimerRef.current) window.clearTimeout(feedbackTimerRef.current);
     };
-  }, [createServices, flash, refresh]);
+  }, [flash, initializationAttempt, refresh]);
+
+  const retryInitialization = useCallback(() => {
+    setFeedback(null);
+    setInitializationAttempt((attempt) => attempt + 1);
+  }, []);
 
   const resetDemoData = useCallback(async () => {
     const bundle = servicesRef.current;
@@ -298,10 +309,24 @@ export function useAppController({ createServices = createDefaultServices } = {}
       updateBlockStructure: invoke("updateBlockStructure"),
       decideConversionFinding: invoke("decideConversionFinding"),
       completeConversionReview: invoke("completeConversionReview"),
+      generateVersionMappings: invoke("generateVersionMappings"),
+      getVersionMappings: invoke("getVersionMappings"),
+      decideVersionMapping: invoke("decideVersionMapping"),
       createFileDownloadLink: invoke("createFileDownloadLink"),
       createPdfExport: invoke("createPdfExport"),
       getPdfExport: invoke("getPdfExport"),
       getPdfExportDownloadLink: invoke("getPdfExportDownloadLink"),
+      createXlsxExport: invoke("createXlsxExport"),
+      getXlsxExport: invoke("getXlsxExport"),
+      getXlsxExportDownloadLink: invoke("getXlsxExportDownloadLink"),
+      uploadXlsxImport: invoke("uploadXlsxImport"),
+      getXlsxImport: invoke("getXlsxImport"),
+      getXlsxImportRows: invoke("getXlsxImportRows"),
+      applySafeXlsxImport: invoke("applySafeXlsxImport"),
+      decideXlsxConflict: invoke("decideXlsxConflict"),
+      applyXlsxConflicts: invoke("applyXlsxConflicts"),
+      cancelXlsxImport: invoke("cancelXlsxImport"),
+      retryXlsxImport: invoke("retryXlsxImport"),
       refresh,
     };
   }, [refresh, services?.backend]);
@@ -312,21 +337,31 @@ export function useAppController({ createServices = createDefaultServices } = {}
     ),
   [runNormMutation]);
 
-  const addReply = useCallback((normId, submissionId, text) =>
+  const loadNormDetail = useCallback(async (publicId) => {
+    const bundle = servicesRef.current;
+    if (!bundle) return null;
+    if (typeof bundle.normService.loadDetail === "function") {
+      return bundle.normService.loadDetail(publicId);
+    }
+    return bundle.normService.listPublicNorms("Všechny")
+      .find((norm) => norm.number === publicId || norm.id === publicId) || null;
+  }, []);
+
+  const addReply = useCallback((normId, submissionId, text, participationVersion) =>
     runNormMutation((normService, sessionId) =>
-      normService.reply(sessionId, normId, submissionId, text),
+      normService.reply(sessionId, normId, submissionId, text, participationVersion),
     ),
   [runNormMutation]);
 
-  const voteSubmission = useCallback((normId, submissionId, direction) =>
+  const voteSubmission = useCallback((normId, submissionId, direction, commentRowVersion, participationVersion) =>
     runNormMutation((normService, sessionId) =>
-      normService.voteSubmission(sessionId, normId, submissionId, direction),
+      normService.voteSubmission(sessionId, normId, submissionId, direction, commentRowVersion, participationVersion),
     ),
   [runNormMutation]);
 
-  const voteNeed = useCallback((normId, value) =>
+  const voteNeed = useCallback((normId, value, participationVersion) =>
     runNormMutation((normService, sessionId) =>
-      normService.voteNeed(sessionId, normId, value),
+      normService.voteNeed(sessionId, normId, value, participationVersion),
     ),
   [runNormMutation]);
 
@@ -352,6 +387,25 @@ export function useAppController({ createServices = createDefaultServices } = {}
   }, [flash, mutate, refresh, session?.id]);
 
   const downloadDocument = useCallback(async (norm) => {
+    const bundle = servicesRef.current;
+    if (bundle?.backend === "server") {
+      if (!norm.file?.name) {
+        flash("K této normě zatím nebyl nahrán soubor.");
+        return null;
+      }
+      try {
+        const linkData = await bundle.createPublicOriginalDownloadLink(norm.number);
+        const link = document.createElement("a");
+        link.href = linkData.url;
+        link.download = linkData.name || norm.file.name;
+        link.rel = "noreferrer";
+        link.click();
+        return linkData;
+      } catch (error) {
+        flash(error?.message || "Dokument se nepodařilo připravit ke stažení.", "error");
+        return null;
+      }
+    }
     if (!norm.file?.id) {
       flash("K této normě zatím nebyl nahrán soubor.");
       return null;
@@ -568,11 +622,13 @@ export function useAppController({ createServices = createDefaultServices } = {}
     showParticipationUnavailable,
     flash,
     clearFeedback: () => setFeedback(null),
+    retryInitialization,
     resetDemoData,
-  }), [authenticated, flash, logout, mutate, openLogin, ready, refresh, requireLogin, resetDemoData, showParticipationUnavailable]);
+  }), [authenticated, flash, logout, mutate, openLogin, ready, refresh, requireLogin, resetDemoData, retryInitialization, showParticipationUnavailable]);
 
   const normActions = useMemo(() => ({
     setFilter: setNormFilter,
+    loadDetail: loadNormDetail,
     requireLogin,
     showParticipationUnavailable,
     downloadDocument,
@@ -592,6 +648,7 @@ export function useAppController({ createServices = createDefaultServices } = {}
     createNorm,
     deleteNorm,
     downloadDocument,
+    loadNormDetail,
     replaceDocument,
     requireLogin,
     resolveSubmission,
@@ -609,6 +666,7 @@ export function useAppController({ createServices = createDefaultServices } = {}
     view,
     actions,
     feedback,
+    initializationFailed,
     authMode,
     authDelivery,
     services,

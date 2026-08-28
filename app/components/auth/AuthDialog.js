@@ -3,7 +3,7 @@ import { useDialogFocusTrap } from "../../hooks/use-dialog-focus-trap.js";
 import { DemoInbox } from "./DemoInbox.js";
 
 const INITIAL_STEP = {
-  login: "identify",
+  login: "access-choice",
   register: "register",
   "forgot-password": "forgot-password",
 };
@@ -211,7 +211,19 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
   }
 
   let form;
-  if (step === "identify") {
+  if (step === "access-choice") {
+    form = h("section", null,
+      h("p", null, "Vyberte, zda už účet máte, nebo se registrujete poprvé."),
+      h("div", { className: "modalActions stackedActions" },
+        h("button", {
+          type: "button",
+          className: "primaryButton",
+          onClick: () => transition("identify"),
+        }, "Jsem registrovaný uživatel"),
+        h("button", { type: "button", onClick: () => transition("register") }, "Jsem nový uživatel"),
+      ),
+    );
+  } else if (step === "identify") {
     form = h("form", { onSubmit: identify },
       h("p", null, "Zadejte e-mail. Podle typu účtu nabídneme bezpečný způsob přihlášení."),
       notice && h("p", { className: "authNotice", role: "status" }, notice),
@@ -238,7 +250,7 @@ export function AuthDialog({ authMode, initialDelivery, onClose, onAuthenticated
         h(Field, { label: "Členské číslo", name: "membershipId", required: true }),
       ),
       h("div", { className: "modalActions" },
-        h("button", { type: "button", onClick: () => transition("identify") }, "Zpět"),
+        h("button", { type: "button", onClick: () => transition("access-choice") }, "Zpět"),
         h("button", { className: "primaryButton" }, "Dokončit registraci"),
       ),
     );

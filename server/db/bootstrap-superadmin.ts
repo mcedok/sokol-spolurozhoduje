@@ -90,6 +90,23 @@ export async function bootstrapInitialSuperadmin(
   });
 }
 
+export async function ensureInitialSuperadmin(
+  sql: Sql,
+  secrets: SecretService,
+  input: InitialSuperadminInput,
+  tokenFile: string,
+): Promise<{ created: false } | { created: true; userId: string; setupToken: string }> {
+  const [{ exists }] = await sql<{ exists: boolean }[]>`
+    select exists(select 1 from users where role = 'superadmin') as exists
+  `;
+  if (exists) return { created: false };
+
+  const setupToken = secrets.newSessionToken();
+  const created = await withProtectedSetupTokenFile(tokenFile, setupToken, () =>
+    bootstrapInitialSuperadmin(sql, secrets, input, setupToken));
+  return { created: true, ...created };
+}
+
 async function main() {
   if (existsSync(".env.local") && typeof process.loadEnvFile === "function") {
     process.loadEnvFile(".env.local");
@@ -103,22 +120,16 @@ async function main() {
   try {
     const tokenFile = required("FIRST_ADMIN_TOKEN_FILE");
     const secrets = createSecretServiceFromEnvironment();
-    const setupToken = secrets.newSessionToken();
-    await withProtectedSetupTokenFile(tokenFile, setupToken, () =>
-      bootstrapInitialSuperadmin(
-        sql,
-        secrets,
-        {
-          email: required("FIRST_ADMIN_EMAIL"),
-          firstName: required("FIRST_ADMIN_FIRST_NAME"),
-          lastName: required("FIRST_ADMIN_LAST_NAME"),
-          organizationCode: required("FIRST_ADMIN_ORGANIZATION_CODE"),
-          organizationName: required("FIRST_ADMIN_ORGANIZATION_NAME"),
-        },
-        setupToken,
-      ),
-    );
-    process.stdout.write(`Initial superadministrator created. Setup token written to ${tokenFile}.\n`);
+    const result = await ensureInitialSuperadmin(sql, secrets, {
+      email: required("FIRST_ADMIN_EMAIL"),
+      firstName: required("FIRST_ADMIN_FIRST_NAME"),
+      lastName: required("FIRST_ADMIN_LAST_NAME"),
+      organizationCode: required("FIRST_ADMIN_ORGANIZATION_CODE"),
+      organizationName: required("FIRST_ADMIN_ORGANIZATION_NAME"),
+    }, tokenFile);
+    process.stdout.write(result.created
+      ? `Initial superadministrator created. Setup token written to ${tokenFile}.\n`
+      : "Initial superadministrator already exists.\n");
   } finally {
     await sql.end({ timeout: 5 });
   }

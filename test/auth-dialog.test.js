@@ -31,6 +31,23 @@ describe("AuthDialog", () => {
     harness = createHarness();
   });
 
+  it("nejprve oddělí přihlášení existujícího uživatele a novou registraci", async () => {
+    const user = userEvent.setup();
+    render(createElement(AuthDialog, {
+      authMode: "login",
+      authService: harness.authService,
+      onAuthenticated: vi.fn(),
+      onClose: vi.fn(),
+    }));
+
+    expect(screen.getByRole("button", { name: "Jsem registrovaný uživatel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Jsem nový uživatel" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("E-mail")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Jsem registrovaný uživatel" }));
+    expect(screen.getByLabelText("E-mail")).toHaveFocus();
+  });
+
   it("registers a member through five fields and closes after the correct delivered code", async () => {
     const user = userEvent.setup();
     const onAuthenticated = vi.fn();
@@ -42,12 +59,11 @@ describe("AuthDialog", () => {
       onClose,
     }));
 
-    await user.type(screen.getByLabelText("E-mail"), "nova.clenka@example.cz");
-    await user.click(screen.getByRole("button", { name: "Pokračovat" }));
-
+    await user.click(screen.getByRole("button", { name: "Jsem nový uživatel" }));
     expect(screen.getByTestId("auth-dialog")).toHaveAttribute("data-auth-step", "register");
     await user.type(screen.getByLabelText("Jméno"), "Jana");
     await user.type(screen.getByLabelText("Příjmení"), "Nováková");
+    await user.type(screen.getByLabelText("E-mail"), "nova.clenka@example.cz");
     expect(screen.getByLabelText("E-mail")).toHaveValue("nova.clenka@example.cz");
     await user.type(screen.getByLabelText("Tělocvičná jednota"), "TJ Sokol Brno I");
     await user.type(screen.getByLabelText("Členské číslo"), "CLEN-2026-42");
@@ -87,6 +103,7 @@ describe("AuthDialog", () => {
       onClose: vi.fn(),
     }));
 
+    await user.click(screen.getByRole("button", { name: "Jsem registrovaný uživatel" }));
     await user.type(screen.getByLabelText("E-mail"), "znamy.clen@example.cz");
     await user.click(screen.getByRole("button", { name: "Pokračovat" }));
 
@@ -108,6 +125,7 @@ describe("AuthDialog", () => {
       onClose,
     }));
 
+    await user.click(screen.getByRole("button", { name: "Jsem registrovaný uživatel" }));
     await user.type(screen.getByLabelText("E-mail"), "administrator@sokol.demo");
     await user.click(screen.getByRole("button", { name: "Pokračovat" }));
 
@@ -174,7 +192,7 @@ describe("AuthDialog", () => {
 
     const dialog = screen.getByRole("dialog", { name: "Přihlášení" });
     const close = within(dialog).getByRole("button", { name: "Zavřít" });
-    const last = within(dialog).getByRole("button", { name: "Pokračovat" });
+    const last = within(dialog).getByRole("button", { name: "Jsem nový uživatel" });
     last.focus();
     await user.tab();
     expect(close).toHaveFocus();
@@ -201,6 +219,7 @@ describe("AuthDialog", () => {
       onClose: vi.fn(),
     }));
 
+    await user.click(screen.getByRole("button", { name: "Jsem registrovaný uživatel" }));
     await user.type(screen.getByLabelText("E-mail"), "administrator@sokol.demo");
     await user.click(screen.getByRole("button", { name: "Pokračovat" }));
     expect(await screen.findByLabelText("Heslo")).toBeInTheDocument();

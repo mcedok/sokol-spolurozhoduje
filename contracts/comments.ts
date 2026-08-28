@@ -55,8 +55,25 @@ export const publicCommentSchema = z.object({
   settlement: publicSettlementSchema.nullable(),
 }).strict();
 
+export const publicDiscussionCommentSchema = publicCommentSchema.extend({
+  parentPublicId: z.string().regex(/^PRIP-\d{4}-\d{6,}$/).nullable(),
+  score: z.number().int(),
+  currentUserVote: z.union([z.literal(-1), z.literal(1)]).nullable(),
+}).strict();
+
+export const publicCommentThreadSchema = z.object({
+  publicId: z.string().regex(/^VLAK-\d{4}-\d{6,}$/),
+  blockUid: z.string().uuid(),
+  blockRevisionId: z.string().uuid(),
+  status: z.enum(["open", "locked", "hidden", "resolved"]),
+  rowVersion: z.number().int().positive(),
+  comments: z.array(publicDiscussionCommentSchema),
+}).strict();
+
 export type CommentType = z.infer<typeof commentTypeSchema>;
 export type CommentPriority = z.infer<typeof commentPrioritySchema>;
 export type CommentStatus = z.infer<typeof commentStatusSchema>;
 export type SettlementOutcome = z.infer<typeof settlementOutcomeSchema>;
 export type PublicComment = z.infer<typeof publicCommentSchema>;
+export type PublicDiscussionComment = z.infer<typeof publicDiscussionCommentSchema>;
+export type PublicCommentThread = z.infer<typeof publicCommentThreadSchema>;

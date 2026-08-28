@@ -46,6 +46,7 @@ const norm = {
   reason: "Důvodová zpráva vysvětluje potřebu nové úpravy.",
   file: { id: "file-1", name: "zkusebni-rad.pdf" },
   needVotes: { yes: 12, no: 3 },
+  participationVersion: 7,
   sections: [{
     id: "section-1",
     label: "§ 1",
@@ -54,6 +55,7 @@ const norm = {
   }],
   submissions: [{
     id: "submission-1",
+    rowVersion: 3,
     kind: "Návrh úpravy",
     section: "§ 1 odst. 1",
     title: "Doplnit vzdálenou účast",
@@ -88,6 +90,30 @@ function detailActions(overrides = {}) {
 }
 
 describe("veřejný a členský detail normy", () => {
+  it("vykreslí převedený blok a otevře návrh změny přímo pro tento blok", async () => {
+    const user = userEvent.setup();
+    const actions = detailActions();
+    const block = {
+      blockUid: "0198f413-2a36-7000-8000-000000000010",
+      blockRevisionId: "0198f413-2a36-7000-8000-000000000011",
+      type: "paragraph",
+      order: 0,
+      commentable: true,
+      text: "Převedený text normy",
+      structuredContent: { runs: [{ text: "Převedený text normy", bold: true }] },
+    };
+    render(createElement(NormDetail, {
+      norm: { ...norm, content: [block], sections: [] },
+      currentUser: activeMember,
+      permissions: { canParticipate: true, canManage: false },
+      actions,
+    }));
+
+    expect(screen.getByText("Převedený text normy").tagName).toBe("STRONG");
+    await user.click(screen.getByRole("button", { name: "Navrhnout změnu k bloku 1" }));
+    expect(actions.openContribution).toHaveBeenCalledWith("proposal", block);
+  });
+
   it("zachová veřejnou důvodovou zprávu, dokument, podněty a vypořádání a účast pošle do přihlášení", async () => {
     const user = userEvent.setup();
     const actions = detailActions();
@@ -129,7 +155,7 @@ describe("veřejný a členský detail normy", () => {
     await user.click(screen.getByRole("button", { name: "↑" }));
 
     expect(actions.openContribution).toHaveBeenCalledWith("proposal");
-    expect(actions.voteSubmission).toHaveBeenCalledWith(norm.id, "submission-1", 1);
+    expect(actions.voteSubmission).toHaveBeenCalledWith(norm.number, "submission-1", 1, 3, 7);
     expect(actions.requireLogin).not.toHaveBeenCalled();
   });
 
@@ -264,6 +290,46 @@ describe("role-aware správa norem", () => {
       commentsOpen: false,
       closureReason: "Uplynula zveřejněná lhůta.",
     }));
+  });
+
+  it("zveřejnění normy otevře připomínky a odešle skutečný cílový stav", async () => {
+    const user = userEvent.setup();
+    const readyNorm = {
+      ...norm,
+      status: "Připraveno ke zveřejnění",
+      serverStatus: "ready",
+      commentsOpen: false,
+      rowVersion: 8,
+    };
+    const updateNorm = vi.fn().mockResolvedValue({ norm: {
+      ...readyNorm, status: "K připomínkování", serverStatus: "published_open", commentsOpen: true,
+    } });
+    render(createElement(NormAdministration, {
+      norms: [readyNorm], selectedNorm: readyNorm, currentUser: administrator, actions: { updateNorm },
+    }));
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Status normy" }), "K připomínkování");
+    expect(screen.getByText(/Připomínky jsou/)).toHaveTextContent("otevřené");
+    await user.click(screen.getByRole("button", { name: "Uložit změny normy" }));
+
+    expect(updateNorm).toHaveBeenCalledWith(readyNorm.id, expect.objectContaining({
+      status: "K připomínkování", commentsOpen: true, rowVersion: 8,
+    }));
+  });
+
+  it("během převodu zobrazuje skutečný stav a nedovolí přeskočit kontrolu náhledu", () => {
+    const converting = {
+      ...norm,
+      status: "Kontrola převodu",
+      serverStatus: "conversion_review",
+      commentsOpen: false,
+    };
+    render(createElement(NormAdministration, {
+      norms: [converting], selectedNorm: converting, currentUser: administrator, actions: {},
+    }));
+
+    expect(screen.getByRole("combobox", { name: "Status normy" })).toBeDisabled();
+    expect(screen.getByText(/nejprve potvrďte náhled převodu/i)).toBeInTheDocument();
   });
 
   it("nabízí v administraci pouze produkční DOCX převod", () => {

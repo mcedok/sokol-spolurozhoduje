@@ -18,6 +18,7 @@ import {
   listPublicDocuments,
 } from "./document-repository";
 import { canTransition } from "./document-state-machine";
+import { readPublicDocumentDetail } from "./public-document-detail-repository";
 
 export interface CreateDocumentInput {
   title: string;
@@ -94,6 +95,10 @@ export function createDocumentService({ sql }: { sql: Sql }) {
   }
 
   return {
+    async getPublicDocumentDetail(actor: Actor | null, publicId: string) {
+      return readPublicDocumentDetail(sql, actor, publicId);
+    },
+
     async listVisibleDocuments(actor: Actor | null): Promise<PublicDocumentSummary[]> {
       return listPublicDocuments(sql, Boolean(actor));
     },

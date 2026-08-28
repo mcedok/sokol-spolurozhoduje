@@ -15,6 +15,57 @@ export function createFileDownloadService({
   ttlSeconds: number;
 }) {
   return {
+    async createPublicOriginalReadLink(
+      actor: Actor | null,
+      publicId: string,
+      correlationId = crypto.randomUUID(),
+    ) {
+      if (!actor) {
+        await appendDeniedAudit(sql, {
+          actor,
+          action: "file.public_original_download_denied",
+          targetType: "document",
+          correlationId,
+        });
+        throw unauthenticated();
+      }
+      const [file] = await sql<{
+        document_id: string;
+        original_name: string;
+        container: ObjectContainer;
+        object_key: string;
+      }[]>`
+        select document.id as document_id, file.original_name, file.container, file.object_key
+        from documents document
+        join lateral (
+          select version.original_file_id
+          from document_versions version
+          where version.document_id=document.id and version.status='ready'
+          order by version.version_number desc limit 1
+        ) latest on true
+        join file_objects file on file.id=latest.original_file_id
+        where document.number=${publicId}
+          and document.status in (
+            'published_open','comments_closed','settlement','settled',
+            'approved','rejected','archived'
+          )
+          and file.purpose='original_docx' and file.container='originals'
+          and file.av_status='clean' and file.object_status='archived'
+          and file.deleted_at is null
+      `;
+      if (!file) throw new AuthError("NOT_FOUND", "Originální dokument nebyl nalezen.", 404);
+      const signed = await storage.createReadUrl(file.container, file.object_key, ttlSeconds);
+      await withTransaction(sql, async (tx) => appendAudit(tx, {
+        actor,
+        action: "file.public_original_download_link_created",
+        targetType: "document",
+        targetId: file.document_id,
+        correlationId,
+        metadata: { expiresAt: signed.expiresAt },
+      }, "allowed"));
+      return { ...signed, name: file.original_name };
+    },
+
     async createReadLink(
       actor: Actor | null,
       fileId: string,

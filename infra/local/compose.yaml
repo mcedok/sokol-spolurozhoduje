@@ -1,16 +1,16 @@
-name: sokol-spolurozhoduje-test
+name: ${COMPOSE_PROJECT_NAME:-sokol-spolurozhoduje-test}
 
 services:
   postgres:
     image: postgres:16.4-alpine
     environment:
-      POSTGRES_DB: sokol_test
+      POSTGRES_DB: ${POSTGRES_DB:-sokol_test}
       POSTGRES_USER: sokol
       POSTGRES_PASSWORD: local-only-password
     ports:
-      - "127.0.0.1:55432:5432"
+      - "127.0.0.1:${POSTGRES_BIND_PORT:-55432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sokol -d sokol_test"]
+      test: ["CMD-SHELL", "pg_isready -U sokol -d ${POSTGRES_DB:-sokol_test}"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -22,7 +22,7 @@ services:
     image: mcr.microsoft.com/azure-storage/azurite:3.36.0
     command: azurite-blob --blobHost 0.0.0.0 --loose --skipApiVersionCheck --disableTelemetry --location /data
     ports:
-      - "127.0.0.1:10000:10000"
+      - "127.0.0.1:${AZURITE_BIND_PORT:-10000}:10000"
     healthcheck:
       test: ["CMD", "node", "-e", "const s=require('net').connect(10000,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
       interval: 3s
@@ -35,7 +35,7 @@ services:
   clamav:
     image: clamav/clamav:stable-debian
     ports:
-      - "127.0.0.1:3310:3310"
+      - "127.0.0.1:${CLAMAV_BIND_PORT:-3310}:3310"
     healthcheck:
       test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
       interval: 10s
@@ -50,17 +50,17 @@ services:
       dockerfile: worker/Dockerfile
       target: runtime
     environment:
-      DATABASE_URL: jdbc:postgresql://postgres:5432/sokol_test
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-sokol_test}
       DATABASE_USER: sokol
       DATABASE_PASSWORD: local-only-password
       AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;
       CLAMAV_HOST: clamav
       CLAMAV_PORT: "3310"
       WORKER_ID: local-worker
-      XLSX_MANIFEST_KEY_ID: local-development
-      XLSX_MANIFEST_SECRET: local-development-only-secret-change-in-production
+      XLSX_MANIFEST_KEY_ID: ${XLSX_MANIFEST_KEY_ID:?XLSX_MANIFEST_KEY_ID is required}
+      XLSX_MANIFEST_SECRET: ${XLSX_MANIFEST_SECRET:?XLSX_MANIFEST_SECRET is required}
       APPLICATION_INTERNAL_URL: http://host.docker.internal:3000
-      WORKER_CALLBACK_SECRET: local-worker-callback-secret-change-in-production
+      WORKER_CALLBACK_SECRET: ${WORKER_CALLBACK_SECRET:?WORKER_CALLBACK_SECRET is required}
     depends_on:
       postgres:
         condition: service_healthy

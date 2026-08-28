@@ -7,6 +7,7 @@ import {
   resolveActor,
   revokeSession,
 } from "../../server/modules/identity/session-repository";
+import * as sessionRepository from "../../server/modules/identity/session-repository";
 import {
   migrateTestDatabase,
   resetTestDatabase,
@@ -85,5 +86,22 @@ describe("server security primitives", () => {
     await expect(
       assertCsrf(testSql, secrets, session.sessionId, "wrong-token"),
     ).rejects.toThrow(/CSRF/);
+  });
+
+  it("renews the CSRF token of an existing authenticated session", async () => {
+    const admin = await seedActiveAdmin();
+    const session = await createSession(testSql, secrets, {
+      userId: admin.id,
+      ttlMs: 60_000,
+    });
+    const renewCsrfToken = (sessionRepository as Record<string, unknown>).renewCsrfToken as
+      | ((...args: unknown[]) => Promise<string>)
+      | undefined;
+
+    const renewed = await renewCsrfToken?.(testSql, secrets, session.sessionId);
+
+    expect(renewed).toMatch(/^[A-Za-z0-9_-]{32,}$/);
+    await expect(assertCsrf(testSql, secrets, session.sessionId, renewed)).resolves.toBeUndefined();
+    await expect(assertCsrf(testSql, secrets, session.sessionId, session.csrfToken)).rejects.toThrow(/CSRF/);
   });
 });

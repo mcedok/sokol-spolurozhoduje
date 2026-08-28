@@ -277,6 +277,7 @@ describe("access administration acceptance workflows", () => {
     await user.click(loginTrigger);
     const authDialog = screen.getByRole("dialog", { name: "Přihlášení" });
     expect(authDialog).toHaveAttribute("aria-modal", "true");
+    await user.click(within(authDialog).getByRole("button", { name: "Jsem registrovaný uživatel" }));
     expect(within(authDialog).getByLabelText("E-mail")).toHaveFocus();
     await user.click(within(authDialog).getByRole("button", { name: "Zavřít" }));
     expect(loginTrigger).toHaveFocus();

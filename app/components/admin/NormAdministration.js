@@ -5,7 +5,12 @@ import { XlsxWorkingPanel } from "./XlsxWorkingPanel.js";
 
 const STATUS_OPTIONS = [
   "Koncept",
+  "Kontrola souboru",
+  "Převod dokumentu",
+  "Kontrola převodu",
+  "Připraveno ke zveřejnění",
   "K připomínkování",
+  "Připomínky uzavřeny",
   "Vypořádání",
   "Ke schválení",
   "Schváleno",
@@ -13,9 +18,25 @@ const STATUS_OPTIONS = [
   "Archivováno",
 ];
 const CLOSED_STATUSES = new Set(["Schváleno", "Neschváleno", "Archivováno"]);
+const CONVERSION_STATUSES = new Set(["file_check", "conversion", "conversion_review"]);
+const STATUS_OPTIONS_BY_SERVER = {
+  concept: ["Koncept"],
+  file_check: ["Kontrola souboru"],
+  conversion: ["Převod dokumentu"],
+  conversion_review: ["Kontrola převodu"],
+  ready: ["Připraveno ke zveřejnění", "K připomínkování"],
+  published_open: ["K připomínkování", "Připomínky uzavřeny"],
+  comments_closed: ["Připomínky uzavřeny", "K připomínkování", "Vypořádání"],
+  settlement: ["Vypořádání", "Ke schválení"],
+  settled: ["Ke schválení", "Schváleno", "Neschváleno"],
+  approved: ["Schváleno", "Archivováno"],
+  rejected: ["Neschváleno", "Archivováno"],
+  archived: ["Archivováno"],
+};
 const STATUS_CLASSES = {
   Koncept: "neutral",
   "K připomínkování": "open",
+  "Připomínky uzavřeny": "review",
   Vypořádání: "review",
   "Ke schválení": "review",
   Schváleno: "approved",
@@ -36,6 +57,7 @@ function editableDraft(norm) {
     submittedBy: norm?.submittedBy || "",
     responsible: norm?.responsible || "",
     reason: norm?.reason || "",
+    rowVersion: norm?.rowVersion,
   };
 }
 
@@ -55,7 +77,11 @@ export function NormAdministration({ norms = [], selectedNorm, currentUser, acti
     setDraft((current) => ({
       ...current,
       status,
-      commentsOpen: CLOSED_STATUSES.has(status) ? false : current.commentsOpen,
+      commentsOpen: status === "K připomínkování"
+        ? true
+        : (CLOSED_STATUSES.has(status) || status === "Připomínky uzavřeny" || status === "Vypořádání")
+          ? false
+          : current.commentsOpen,
     }));
   }
 
@@ -63,6 +89,7 @@ export function NormAdministration({ norms = [], selectedNorm, currentUser, acti
     setDraft((current) => ({
       ...current,
       commentsOpen: !current.commentsOpen,
+      status: current.commentsOpen ? "Připomínky uzavřeny" : "K připomínkování",
       closureReason: current.commentsOpen ? current.closureReason : "",
     }));
   }
@@ -94,6 +121,9 @@ export function NormAdministration({ norms = [], selectedNorm, currentUser, acti
 
   const needsClosureReason =
     !draft.commentsOpen && Boolean(selectedNorm?.commentsOpen || draft.closureReason);
+  const conversionLocked = CONVERSION_STATUSES.has(selectedNorm?.serverStatus);
+  const statusOptions = STATUS_OPTIONS_BY_SERVER[selectedNorm?.serverStatus]
+    || (STATUS_OPTIONS.includes(draft.status) ? STATUS_OPTIONS : [draft.status]);
 
   return h(
     "section",
@@ -164,9 +194,12 @@ export function NormAdministration({ norms = [], selectedNorm, currentUser, acti
                 "div",
                 { className: "adminControls" },
                 h("label", null, "Status normy",
-                  h("select", { value: draft.status, onChange: (event) => changeStatus(event.target.value) },
-                    STATUS_OPTIONS.map((status) => h("option", { key: status, value: status }, status)),
+                  h("select", { disabled: conversionLocked, value: draft.status, onChange: (event) => changeStatus(event.target.value) },
+                    statusOptions.map((status) => h("option", { key: status, value: status }, status)),
                   ),
+                ),
+                conversionLocked && h("p", { className: "wide", role: "note" },
+                  "Nejprve potvrďte náhled převodu. Potom bude možné dokument zveřejnit.",
                 ),
                 h("label", null, "Termín připomínek",
                   h("input", { type: "date", value: draft.deadline, onChange: (event) => change("deadline", event.target.value) }),
@@ -177,6 +210,7 @@ export function NormAdministration({ norms = [], selectedNorm, currentUser, acti
                     type: "button",
                     className: draft.commentsOpen ? "closeButton" : "primaryButton small",
                     "aria-pressed": draft.commentsOpen ? "false" : "true",
+                    disabled: conversionLocked || selectedNorm?.serverStatus === "concept",
                     onClick: toggleComments,
                   }, draft.commentsOpen ? "Uzavřít připomínky" : "Otevřít připomínky"),
                 ),

@@ -92,3 +92,21 @@ export async function revokeSession(sql: Sql, sessionId: string): Promise<void> 
     update sessions set revoked_at = coalesce(revoked_at, now()) where id = ${sessionId}
   `;
 }
+
+export async function renewCsrfToken(
+  sql: Sql,
+  secrets: SecretService,
+  sessionId: string,
+): Promise<string> {
+  const csrfToken = secrets.newCsrfToken();
+  const updated = await sql<{ id: string }[]>`
+    update sessions
+    set csrf_hash = ${secrets.hashCsrfToken(csrfToken)}
+    where id = ${sessionId}
+      and revoked_at is null
+      and expires_at > now()
+    returning id
+  `;
+  if (!updated.length) throw new Error("Authenticated session is no longer active");
+  return csrfToken;
+}

@@ -82,9 +82,17 @@ tlačítko nebo údaj zaslaný klientem nikdy není autoritou.
   `sokol.cz` a registraci neschvaluje superadministrátor.
 - Administrátor a superadministrátor používají nastavitelné heslo; pozvaný
   správce má bezpečný tok prvního nastavení a obnovy hesla.
-- Produkční správci používají Argon2id, TOTP MFA, rotované serverové relace a
-  bezpečné `HttpOnly` cookies. Browserové PBKDF2 a simulovaná schránka jsou jen
-  demoverze.
+- Produkční administrátoři používají Argon2id, rotované serverové relace a
+  bezpečné `HttpOnly` cookies. Běžný `admin` se přihlašuje pouze heslem;
+  TOTP MFA je povinné jen pro `superadmin`. Browserové PBKDF2 a simulovaná
+  schránka jsou jen demoverze.
+- CSRF token nesmí existovat pouze v paměti bez možnosti bezpečné obnovy.
+  Přetrvá-li po reloadu platná `HttpOnly` session cookie, serverový klient musí
+  před první změnovou operací získat nový CSRF token přes úzký autentizovaný
+  endpoint. Endpoint nesmí vydat token anonymnímu požadavku.
+- Každou změnu relací nebo inicializace ověř scénářem přihlášení → reload
+  stránky → změnová operace. Samotný úspěšný login bez reloadu není dostatečný
+  důkaz funkčnosti relace.
 - Demo přístupové údaje smějí být veřejné pouze v jasně označené demoverzi.
   Nikdy je nepřenášej do produkční konfigurace nebo tajemství.
 
@@ -133,6 +141,15 @@ Výchozí stack:
 ## DOCX převod a stabilní bloky
 
 - Originální DOCX se vždy archivuje a nikdy se při retry nemaže ani nepřepisuje.
+- Aktuální vstupní formát převodu je pouze DOCX. UI nesmí nabízet PDF, ODT ani
+  jiný formát, dokud pro něj neexistuje implementovaný a ověřený serverový tok.
+- Založení normy s vybraným souborem musí skutečně provést vytvoření dokumentu
+  a následný upload DOCX s CSRF, `If-Match` a idempotency key. Aktivní file
+  input ani úspěšný unit test nízkoúrovňového uploadu samy o sobě neprokazují,
+  že tento uživatelský tok funguje.
+- Při změně uploadu ověř oba vstupy: soubor při založení nové normy i novou
+  verzi u existující normy. Test musí pokrýt skutečné pořadí API požadavků a
+  předání souboru do konverzního workflow.
 - Zachovat nadpisy, odstavce, číslované seznamy, odrážky, tabulky, zvýraznění a
   odkazy.
 - Komplikovanou tabulku lze převést do HTML, ponechat jako samostatnou přílohu
@@ -250,7 +267,7 @@ Podrobnosti:
 Úplný produkční návrh, ER model a pořadí balíčků jsou v
 `docs/superpowers/specs/2026-08-16-production-document-consultation-architecture-design.md`.
 
-## Aktuální checkpoint — 24. 8. 2026
+## Historický checkpoint — 24. 8. 2026
 
 - Aktivní pracovní větev: `codex/xlsx-working-import` v linked worktree
   `.worktrees/user-access-administration`.
@@ -292,6 +309,44 @@ Podrobnosti:
 3. Připrav commit a následně autorizovaný push a pull request se shrnutím
    migrací, bezpečnostních invariantů a čerstvých ověřovacích výsledků.
 
+## Aktuální checkpoint — 25. 8. 2026
+
+- Aktivní větev je `codex/local-pilot` v linked worktree
+  `.worktrees/local-pilot`; výchozí commit této rozpracované větve je
+  `8a12eba`.
+- Pracovní strom obsahuje necommitnutý lokální pilot a navazující opravy UI,
+  uploadu DOCX a obnovy CSRF. Všechny existující změny zachovej; nepoužívej
+  `git reset --hard` ani `git checkout --`.
+- Pilot používá oddělenou databázi `sokol_pilot` na portu `55433`, Azurite na
+  `10001`, ClamAV na `3311` a konverzní worker. `pilot:stop` zachovává databázový
+  i souborový volume; při údržbě nikdy nepoužívej `down -v`.
+- Formulář nové normy nyní podporuje pouze DOCX do 15 MB a po vytvoření normy
+  volá `/api/documents/{documentId}/versions/uploads`.
+- Po reloadu přihlášeného uživatele klient při chybějícím tokenu volá
+  autentizovaný `/api/auth/session/csrf`; server token obnoví v existující
+  relaci. Anonymní požadavek musí vrátit `401`.
+- Poslední čerstvé ověření této opravné vlny: serverový produkční build prošel,
+  3 související Vitest soubory / 13 testů prošly, UI smoke prošel bez browser a
+  resource chyb a `pilot:status` hlásil `ready`.
+- Nový commit, push ani pull request pro lokální pilot a tyto opravy zatím
+  nevznikl.
+
+### Povinný postup pro opravy pilotního UI
+
+1. Reprodukuj chybu na skutečném serverovém backendu, ne pouze v browserové
+   demoverzi, a trasuj UI → klient → API → služba → databáze/worker.
+2. Ověř, že ovládací prvek není jen vizuální maketa a že nabízený formát či
+   operace odpovídá implementovanému serverovému kontraktu.
+3. Napiš regresní test, sleduj jeho správné selhání a teprve potom oprav zdroj
+   problému.
+4. Pro autentizované mutace vždy zahrň scénář po reloadu stránky a zkontroluj
+   CSRF, cookies, `If-Match`, idempotency key a vlastnictví dokumentu.
+5. Pilot nasaď pomocí `pnpm pilot:stop` a `pnpm pilot:start`; ověř
+   `pnpm pilot:status`, `pnpm pilot:smoke-ui`, cílené testy a serverový build.
+6. U uploadu nestačí kontrola route. Ověř založení normy se souborem, přijetí
+   uploadu, zařazení konverzního jobu a zdravý konverzní worker. Pokud nelze
+   provést přihlášený end-to-end scénář, výslovně tento limit uveď.
+
 ## Povinné ověřovací brány
 
 Po změně produkčního kódu spusť přiměřeně nejprve cílené testy a před tvrzením
@@ -325,8 +380,11 @@ scénářů.
 ## Lokální prostředí
 
 - Produkční serverový návod: `docs/operations/local-server.md`.
+- Návod lokálního akceptačního pilotu: `docs/operations/local-pilot.md`.
 - Docker Compose: `infra/local/compose.yaml`.
 - Výchozí testovací PostgreSQL běží lokálně na portu `55432`.
+- Pilotní PostgreSQL `sokol_pilot` běží na portu `55433` a nesmí být zaměněna
+  za testovací `sokol_test`. Pilotní data ani volume nemaž při běžném restartu.
 - Health endpointy: `/api/health/live` a `/api/health/ready`.
 - Tajemství patří do `.env.local` nebo produkčního správce tajemství. Nikdy je
   necommituj ani nevypisuj do logu.
