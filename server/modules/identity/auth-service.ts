@@ -282,11 +282,31 @@ export function createAuthService({
       const user = await findAuthUserByEmail(sql, email);
       const eligible =
         user && (user.role === "admin" || user.role === "superadmin") &&
-        user.status === "active" && user.password_hash && user.totp_enabled_at;
+        user.status === "active" && user.password_hash &&
+        (user.role === "admin" || user.totp_enabled_at);
       const passwordHash = eligible ? user.password_hash! : await dummyPasswordHash;
       if (!(await secrets.verifyPassword(password, passwordHash)) || !eligible) {
         await appendPublicDenial("auth.admin_password_denied", correlationId, user?.id);
         throw unauthenticated();
+      }
+
+      if (user.role === "admin") {
+        const created = await withTransaction(sql, async (tx) => {
+          const session = await createSessionInTransaction(tx, secrets, {
+            userId: user.id,
+            ttlMs: AUTH_LIMITS.sessionLifetimeMs,
+          });
+          await appendAudit(tx, {
+            actor: null,
+            action: "auth.admin_login",
+            targetType: "user",
+            targetId: user.id,
+            correlationId,
+            metadata: { mfaRequired: false },
+          }, "allowed");
+          return session;
+        });
+        return loadSessionUser(created);
       }
 
       const loginAttemptId = secrets.newSessionToken();
@@ -382,21 +402,30 @@ export function createAuthService({
               totp_secret_ciphertext = null, totp_enabled_at = null
           where user_id = ${user.id}
         `;
-        await tx`
-          insert into login_challenges (user_id, kind, secret_hash, expires_at)
-          values (
-            ${user.id}, 'mfa_enrollment', ${secrets.hashSessionToken(setupAttemptId)},
-            ${new Date(Date.now() + AUTH_LIMITS.passwordLinkMs)}
-          )
-        `;
+        if (user.role === "admin") {
+          await tx`
+            update users set status='active', email_verified_at=now(), updated_at=now()
+            where id=${user.id}
+          `;
+        } else {
+          await tx`
+            insert into login_challenges (user_id, kind, secret_hash, expires_at)
+            values (
+              ${user.id}, 'mfa_enrollment', ${secrets.hashSessionToken(setupAttemptId)},
+              ${new Date(Date.now() + AUTH_LIMITS.passwordLinkMs)}
+            )
+          `;
+        }
         await appendAudit(tx, {
           actor: null, action: "auth.admin_password_setup", targetType: "user", targetId: user.id,
-          correlationId,
+          correlationId, metadata: { mfaRequired: user.role === "superadmin" },
         }, "allowed");
-        return { ok: true } as const;
+        return user.role === "admin"
+          ? { kind: "password_ready" as const }
+          : { kind: "mfa_enrollment_required" as const, setupAttemptId };
       });
       if ("error" in result) throw result.error;
-      return { setupAttemptId };
+      return result;
     },
 
     async beginMfaEnrollment(
@@ -410,7 +439,7 @@ export function createAuthService({
         );
         const error = challengeError(challenge, "TOKEN");
         const user = challenge?.user_id ? await findAuthUserById(tx, challenge.user_id) : null;
-        if (error || !user || user.status !== "invited" || user.role === "member") {
+        if (error || !user || user.status !== "invited" || user.role !== "superadmin") {
           return { error: error ?? unauthenticated() } as const;
         }
         await tx`
@@ -442,7 +471,7 @@ export function createAuthService({
         const error = challengeError(challenge, "TOKEN");
         const user = challenge?.user_id ? await findAuthUserById(tx, challenge.user_id) : null;
         if (
-          error || !user || user.status !== "invited" || user.role === "member" ||
+          error || !user || user.status !== "invited" || user.role !== "superadmin" ||
           !user.totp_secret_ciphertext
         ) return { error: error ?? unauthenticated() } as const;
         const secret = totp.decrypt(user.totp_secret_ciphertext);

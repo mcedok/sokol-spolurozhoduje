@@ -18,6 +18,8 @@ export async function migrateTestDatabase(): Promise<void> {
 export async function resetTestDatabase(): Promise<void> {
   await testSql.unsafe(`
     truncate table
+      document_need_votes,
+      comment_votes,
       xlsx_row_applications,
       xlsx_apply_runs,
       xlsx_import_decisions,
@@ -37,6 +39,7 @@ export async function resetTestDatabase(): Promise<void> {
       comment_revisions,
       comments,
       comment_threads,
+      participation_sequences,
       security_events,
       block_edit_revisions,
       block_assets,

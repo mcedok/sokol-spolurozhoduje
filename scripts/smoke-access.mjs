@@ -334,13 +334,20 @@ async function setValue(selector, value) {
   await evaluate(`window.__accessSmoke.setValue(${JSON.stringify(selector)}, ${JSON.stringify(value)})`);
 }
 
-async function openLogin() {
+async function openLogin(choice = "existing") {
   await waitUntil(async () => {
     if (await evaluate("Boolean(document.querySelector('[data-auth-step]'))")) return true;
     await clickText(COPY.login, ".topbar");
     await sleep(100);
-    return evaluate("document.querySelector('[data-auth-step]')?.dataset.authStep === 'identify'");
+    return evaluate("document.querySelector('[data-auth-step]')?.dataset.authStep === 'access-choice'");
   }, "login dialog readiness");
+  if (await evaluate("document.querySelector('[data-auth-step]')?.dataset.authStep === 'access-choice'")) {
+    await clickText(choice === "new" ? "Jsem nový uživatel" : "Jsem registrovaný uživatel", "[data-auth-step]");
+  }
+  await waitFor(
+    `document.querySelector('[data-auth-step]')?.dataset.authStep === ${JSON.stringify(choice === "new" ? "register" : "identify")}`,
+    `${choice === "new" ? "registration" : "login"} form readiness`,
+  );
 }
 
 async function loginWithPassword(email, password, role) {
@@ -427,10 +434,7 @@ async function runBrowserWorkflows() {
     return { controls, undersized: controls.filter((control) => control.width < 43.5 || control.height < 43.5) };
   })()`);
   assert(voteTargetMetrics.controls.length > 0 && voteTargetMetrics.undersized.length === 0, "mobile voting controls provide at least 44x44px targets", voteTargetMetrics);
-  await openLogin();
-  await setValue('[data-auth-step="identify"] input[name="email"]', "smoke.member@example.cz");
-  await clickText(COPY.continue, "[data-auth-step]");
-  await waitFor("document.querySelector('[data-auth-step]')?.dataset.authStep === 'register'", "member registration form");
+  await openLogin("new");
   const registrationMetrics = await evaluate(`(() => {
     const dialog = document.querySelector('[data-auth-step="register"]');
     const grid = dialog.querySelector('.formGrid');

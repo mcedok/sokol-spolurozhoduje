@@ -65,7 +65,6 @@ function BlockCard({ block, index, active, onEdit }) {
 
 export function ConversionPreview({ preview, activeBlockUid, onEditBlock, referenceUrl }) {
   const [tab, setTab] = useState("web");
-  const [mobile, setMobile] = useState(false);
   const parentRef = useRef(null);
   const blocks = preview.blocks || [];
   const virtual = useVirtualizer({ count: blocks.length, getScrollElement: () => parentRef.current, estimateSize: () => 160, overscan: 5, enabled: blocks.length > 300 });
@@ -74,14 +73,6 @@ export function ConversionPreview({ preview, activeBlockUid, onEditBlock, refere
   const items = activeIndex >= 0 && !virtualItems.some((item) => item.index === activeIndex)
     ? [...virtualItems, { index: activeIndex, key: blocks[activeIndex].blockUid, start: virtual.getOffsetForIndex(activeIndex)?.[0] || 0 }].sort((a, b) => a.index - b.index)
     : virtualItems;
-  useEffect(() => {
-    const query = globalThis.window?.matchMedia?.("(max-width: 760px)");
-    if (!query) return undefined;
-    const update = () => setMobile(query.matches);
-    update();
-    query.addEventListener?.("change", update);
-    return () => query.removeEventListener?.("change", update);
-  }, []);
   useEffect(() => {
     const index = blocks.findIndex((block) => block.blockUid === activeBlockUid);
     if (index >= 0 && blocks.length > 300) virtual.scrollToIndex(index, { align: "center" });
@@ -93,7 +84,7 @@ export function ConversionPreview({ preview, activeBlockUid, onEditBlock, refere
       h("button", { type: "button", role: "tab", id: "tab-reference", "aria-selected": tab === "reference", "aria-controls": "panel-reference", tabIndex: tab === "reference" ? 0 : -1, onClick: () => setTab("reference"), onKeyDown: (event) => { if (["ArrowRight", "ArrowLeft"].includes(event.key)) { event.preventDefault(); setTab("web"); event.currentTarget.previousElementSibling?.focus(); } } }, "Referenční náhled"),
     ),
     h("div", { className: "previewPanels" },
-      h("div", { ref: parentRef, id: "panel-web", role: "tabpanel", "aria-labelledby": "tab-web", hidden: mobile && tab !== "web", className: "webPreview" },
+      h("div", { ref: parentRef, id: "panel-web", role: "tabpanel", "aria-labelledby": "tab-web", hidden: tab !== "web", className: "webPreview" },
         h("div", { style: blocks.length > 300 ? { height: `${virtual.getTotalSize()}px`, position: "relative" } : undefined },
           items.map((item) => {
             const block = blocks[item.index];
@@ -103,7 +94,7 @@ export function ConversionPreview({ preview, activeBlockUid, onEditBlock, refere
           }),
         ),
       ),
-      h("div", { id: "panel-reference", role: "tabpanel", "aria-labelledby": "tab-reference", hidden: mobile && tab !== "reference", className: "referencePreview" },
+      h("div", { id: "panel-reference", role: "tabpanel", "aria-labelledby": "tab-reference", hidden: tab !== "reference", className: "referencePreview" },
         referenceUrl ? h("iframe", { title: "Referenční náhled dokumentu", src: referenceUrl }) : h("p", null, "Referenční náhled se připravuje nebo není dostupný."),
       ),
     ),

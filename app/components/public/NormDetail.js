@@ -1,4 +1,5 @@
 import { createElement as h } from "react";
+import { StructuredBlockContent } from "../shared/StructuredBlockContent.js";
 
 const STATUS_CLASSES = {
   Koncept: "neutral",
@@ -35,13 +36,18 @@ export function NormDetail({ norm, currentUser, permissions = {}, actions = {} }
     return actions.showParticipationUnavailable?.(intent);
   }
 
-  async function addReply(event, submissionId) {
+  async function addReply(event, submission) {
     event.preventDefault();
-    if (!permissions.canManage) return;
+    if (!permissions.canParticipate) return;
     const form = event.currentTarget;
     const text = String(new FormData(form).get("reply") || "").trim();
     if (!text) return;
-    const result = await actions.addReply?.(norm.id, submissionId, text);
+    const result = await actions.addReply?.(
+      norm.number,
+      submission.id,
+      text,
+      norm.participationVersion,
+    );
     if (result) form.reset();
   }
 
@@ -98,6 +104,25 @@ export function NormDetail({ norm, currentUser, permissions = {}, actions = {} }
           { className: "documentPaper" },
           h("p", { className: "documentLabel" }, `${norm.category} · verze ${norm.version}`),
           h("h2", null, norm.title),
+          ...(norm.content || []).map((block, index) => h(
+            "article",
+            { className: "publicDocumentBlock", id: `block-${block.blockUid}`, key: block.blockUid },
+            h("small", { className: "blockLabel" }, `Blok ${index + 1}`),
+            h(StructuredBlockContent, { block }),
+            block.commentable && participationOpen && h("div", { className: "blockParticipationActions" },
+              h("button", {
+                type: "button",
+                "aria-label": `Přidat komentář k bloku ${index + 1}`,
+                onClick: () => participate("comment", () => actions.openContribution?.("comment", block)),
+              }, "Komentovat"),
+              h("button", {
+                type: "button",
+                className: "primaryButton small",
+                "aria-label": `Navrhnout změnu k bloku ${index + 1}`,
+                onClick: () => participate("proposal", () => actions.openContribution?.("proposal", block)),
+              }, "Navrhnout změnu"),
+            ),
+          )),
           ...(norm.sections || []).map((section) => h(
             "section",
             { className: "documentSection", key: section.id },
@@ -121,12 +146,12 @@ export function NormDetail({ norm, currentUser, permissions = {}, actions = {} }
                 h("button", {
                   className: permissions.needVote === "yes" ? "selected yes" : "",
                   "aria-pressed": permissions.needVote === "yes",
-                  onClick: () => participate("vote-need", () => actions.voteNeed?.(norm.id, "yes")),
+                  onClick: () => participate("vote-need", () => actions.voteNeed?.(norm.number, "yes", norm.participationVersion)),
                 }, `Ano ${norm.needVotes?.yes || 0}`),
                 h("button", {
                   className: permissions.needVote === "no" ? "selected no" : "",
                   "aria-pressed": permissions.needVote === "no",
-                  onClick: () => participate("vote-need", () => actions.voteNeed?.(norm.id, "no")),
+                  onClick: () => participate("vote-need", () => actions.voteNeed?.(norm.number, "no", norm.participationVersion)),
                 }, `Ne ${norm.needVotes?.no || 0}`),
               )
               : h("p", { className: "voteResults" }, `Výsledek: ano ${norm.needVotes?.yes || 0}, ne ${norm.needVotes?.no || 0}`),
@@ -138,7 +163,7 @@ export function NormDetail({ norm, currentUser, permissions = {}, actions = {} }
         { className: "contributions" },
         h("div", { className: "contributionHeader" },
           h("div", null, h("p", { className: "kicker" }, "Diskuse"), h("h2", null, "Podněty členů")),
-          participationOpen && h("div", null,
+          participationOpen && !(norm.content || []).length && h("div", null,
             h("button", { onClick: () => participate("comment", () => actions.openContribution?.("comment")) }, "Komentář"),
             h("button", { className: "primaryButton small", onClick: () => participate("proposal", () => actions.openContribution?.("proposal")) }, "Návrh změny"),
           ),
@@ -160,8 +185,13 @@ export function NormDetail({ norm, currentUser, permissions = {}, actions = {} }
               item.adminComment && h("small", null, `Předkladatel: ${item.adminComment}`),
             ),
             ...(item.replies || []).map((reply) => h("div", { className: "reply", key: reply.id }, h("b", null, reply.author), h("p", null, reply.text))),
-            permissions.canManage && h("form", { className: "replyForm", onSubmit: (event) => addReply(event, item.id) },
-              h("input", { name: "reply", "aria-label": "Odpověď předkladatele", placeholder: "Odpovědět jako předkladatel…", required: true }),
+            permissions.canParticipate && h("form", { className: "replyForm", onSubmit: (event) => addReply(event, item) },
+              h("input", {
+                name: "reply",
+                "aria-label": permissions.canManage ? "Odpověď předkladatele" : "Odpověď ve vlákně",
+                placeholder: permissions.canManage ? "Odpovědět jako předkladatel…" : "Odpovědět ve vlákně…",
+                required: true,
+              }),
               h("button", null, "Odeslat"),
             ),
             participationOpen
@@ -172,14 +202,18 @@ export function NormDetail({ norm, currentUser, permissions = {}, actions = {} }
                     className: permissions.submissionVote?.(item.id) === 1 ? "selected" : "",
                     "aria-label": "↑",
                     "aria-pressed": permissions.submissionVote?.(item.id) === 1,
-                    onClick: () => participate("vote-submission", () => actions.voteSubmission?.(norm.id, item.id, 1)),
+                    onClick: () => participate("vote-submission", () => actions.voteSubmission?.(
+                      norm.number, item.id, 1, item.rowVersion, norm.participationVersion,
+                    )),
                   }, "↑"),
                   h("b", null, item.score),
                   h("button", {
                     className: permissions.submissionVote?.(item.id) === -1 ? "selected down" : "",
                     "aria-label": "↓",
                     "aria-pressed": permissions.submissionVote?.(item.id) === -1,
-                    onClick: () => participate("vote-submission", () => actions.voteSubmission?.(norm.id, item.id, -1)),
+                    onClick: () => participate("vote-submission", () => actions.voteSubmission?.(
+                      norm.number, item.id, -1, item.rowVersion, norm.participationVersion,
+                    )),
                   }, "↓"),
                 ),
               )

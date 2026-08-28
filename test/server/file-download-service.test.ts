@@ -5,6 +5,7 @@ import {
   migrateTestDatabase,
   resetTestDatabase,
   seedActiveAdmin,
+  seedActiveMember,
   testSql,
 } from "./db-test-context";
 
@@ -51,6 +52,49 @@ async function seedFile(objectStatus: "quarantined" | "archived") {
 }
 
 describe("file download service", () => {
+  it("lets an authenticated member download the archived original by public document number", async () => {
+    const owner = await seedActiveAdmin();
+    const member = await seedActiveMember();
+    const documentId = crypto.randomUUID();
+    const versionId = crypto.randomUUID();
+    const fileId = crypto.randomUUID();
+    await testSql`
+      insert into documents(id,number,title,owner_admin_id,status,comments_open)
+      values (${documentId},'SOKOL-2099-999010','Členské stažení',${owner.id},'published_open',true)
+    `;
+    await testSql`
+      insert into file_objects(
+        id,document_id,data_owner_user_id,purpose,container,object_key,original_name,
+        declared_mime,detected_mime,size_bytes,sha256,av_status,object_status
+      ) values (
+        ${fileId},${documentId},${owner.id},'original_docx','originals',
+        ${`${documentId}/${fileId}.docx`},'verejna-norma.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        42,${"b".repeat(64)},'clean','archived'
+      )
+    `;
+    await testSql`
+      insert into document_versions(
+        id,document_id,version_number,status,original_file_id,created_by_user_id,published_at
+      ) values (${versionId},${documentId},1,'ready',${fileId},${owner.id},now())
+    `;
+    const service = createFileDownloadService({ sql: testSql, storage: storageDouble(), ttlSeconds: 300 });
+    const createPublicOriginalReadLink = Reflect.get(service, "createPublicOriginalReadLink") as
+      | ((actor: unknown, publicId: string) => Promise<unknown>)
+      | undefined;
+
+    await expect(createPublicOriginalReadLink?.({
+      userId: member.id,
+      role: "member",
+      sessionId: crypto.randomUUID(),
+    }, "SOKOL-2099-999010")).resolves.toEqual({
+      url: "https://storage.example/original.docx?sig=secret",
+      expiresAt: "2026-08-18T12:05:00.000Z",
+      name: "verejna-norma.docx",
+    });
+  });
+
   it("allows the document owner to download a completed XLSX derivative", async () => {
     const owner = await seedActiveAdmin();
     const documentId = crypto.randomUUID();

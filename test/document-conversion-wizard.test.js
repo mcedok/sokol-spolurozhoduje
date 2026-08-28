@@ -126,6 +126,71 @@ describe("DocumentConversionWizard", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Doplňte alternativní popis");
   });
 
+  it("shows only the preview selected by the administrator on every viewport", async () => {
+    const user = userEvent.setup();
+    const api = apiDouble({
+      processing: {
+        versionId: "version-1", jobId: "job-1", jobStatus: "completed",
+        versionStatus: "conversion_review", step: "completed", attemptCount: 1,
+      },
+    });
+    render(h(DocumentConversionWizard, { document: documentRecord, api }));
+    await user.upload(screen.getByLabelText("Nahrát dokument DOCX"), new File(
+      ["PK\u0003\u0004payload"], "návrh.docx", { type: DOCX_MIME },
+    ));
+
+    const webTab = await screen.findByRole("tab", { name: "Webový dokument" });
+    const referenceTab = screen.getByRole("tab", { name: "Referenční náhled" });
+    const webBlock = screen.getByRole("article", { name: "Blok 1" });
+    expect(webTab).toHaveAttribute("aria-selected", "true");
+    expect(webBlock).toBeVisible();
+    expect(screen.getByText("Referenční náhled se připravuje nebo není dostupný.")).not.toBeVisible();
+
+    await user.click(referenceTab);
+
+    expect(referenceTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Referenční náhled se připravuje nebo není dostupný.")).toBeVisible();
+    expect(webBlock).not.toBeVisible();
+  });
+
+  it("explains and opens an unconfirmed table before review completion", async () => {
+    const user = userEvent.setup();
+    const tablePreview = preview();
+    tablePreview.blocks = [{
+      ...tablePreview.blocks[0],
+      type: "table",
+      text: "A | B",
+      structuredContent: {
+        rows: [[{ text: "A" }, { text: "B" }]],
+        tableRecommendation: { score: 0, reasons: [], recommendation: { code: "html" } },
+      },
+    }];
+    const api = apiDouble({
+      processing: {
+        versionId: "version-1", jobId: "job-1", jobStatus: "completed",
+        versionStatus: "conversion_review", step: "completed", attemptCount: 1,
+      },
+      previewValue: tablePreview,
+    });
+    render(h(DocumentConversionWizard, { document: documentRecord, api }));
+    await user.upload(screen.getByLabelText("Nahrát dokument DOCX"), new File(
+      ["PK\u0003\u0004payload"], "návrh.docx", { type: DOCX_MIME },
+    ));
+
+    const summary = await screen.findByRole("region", { name: "Souhrn kontroly" });
+    expect(within(summary).getByText("1 tabulka čeká na potvrzení způsobu zobrazení.")).toBeVisible();
+    const confirm = within(summary).getByRole("button", { name: "Potvrdit náhled" });
+    expect(confirm).toBeEnabled();
+
+    await user.click(confirm);
+
+    expect(screen.getByRole("combobox", { name: "Zobrazení tabulky" })).toBeVisible();
+    expect(within(summary).getByRole("alert")).toHaveTextContent(
+      "Nejprve potvrďte způsob zobrazení zvýrazněné tabulky",
+    );
+    expect(api.completeConversionReview).not.toHaveBeenCalled();
+  });
+
   it("keeps converted text read-only and requires a reason before saving structure", async () => {
     const user = userEvent.setup();
     const api = apiDouble({
@@ -210,6 +275,29 @@ describe("DocumentConversionWizard", () => {
       expect.objectContaining({ idempotencyKey: expect.any(String) }),
     ));
     await waitFor(() => expect(onReady).toHaveBeenCalledWith());
+    expect(screen.getByRole("status", { name: "Výsledek potvrzení náhledu" })).toHaveTextContent(
+      "Náhled byl potvrzen",
+    );
+  });
+
+  it("shows a completion error next to the confirmation controls", async () => {
+    const user = userEvent.setup();
+    const api = apiDouble({
+      processing: {
+        versionId: "version-1", jobId: "job-1", jobStatus: "completed",
+        versionStatus: "conversion_review", step: "completed", attemptCount: 1,
+      },
+    });
+    api.completeConversionReview.mockRejectedValueOnce(new Error("Potvrďte zobrazení tabulek."));
+    render(h(DocumentConversionWizard, { document: documentRecord, api }));
+    await user.upload(screen.getByLabelText("Nahrát dokument DOCX"), new File(
+      ["PK\u0003\u0004payload"], "návrh.docx", { type: DOCX_MIME },
+    ));
+
+    const summary = await screen.findByRole("region", { name: "Souhrn kontroly" });
+    await user.click(within(summary).getByRole("button", { name: "Potvrdit náhled" }));
+
+    expect(await within(summary).findByRole("alert")).toHaveTextContent("Potvrďte zobrazení tabulek.");
   });
 
   it("renders converted emphasis, safe links, lists and tables semantically", async () => {

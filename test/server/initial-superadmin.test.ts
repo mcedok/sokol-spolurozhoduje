@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createSecretService } from "../../server/modules/identity/secret-service";
 import {
   bootstrapInitialSuperadmin,
+  ensureInitialSuperadmin,
   persistSetupToken,
   withProtectedSetupTokenFile,
 } from "../../server/db/bootstrap-superadmin";
@@ -71,6 +72,30 @@ it("removes an orphan token file when database bootstrap fails", async () => {
       throw new Error("commit failed");
     })).rejects.toThrow("commit failed");
     await expect(stat(target)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("keeps repeated local pilot bootstrap idempotent", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sokol-bootstrap-idempotent-"));
+  const tokenFile = join(directory, "setup-token.txt");
+  const input = {
+    email: "pilot@example.cz",
+    firstName: "Pilotní",
+    lastName: "Správce",
+    organizationCode: "USTREDI",
+    organizationName: "Česká obec sokolská",
+  };
+  try {
+    const first = await ensureInitialSuperadmin(testSql, secrets, input, tokenFile);
+    const second = await ensureInitialSuperadmin(testSql, secrets, input, tokenFile);
+
+    expect(first.created).toBe(true);
+    if (!first.created) throw new Error("First pilot bootstrap unexpectedly reused an account.");
+    expect(second).toEqual({ created: false });
+    expect(await testSql`select id from users where role = 'superadmin'`).toHaveLength(1);
+    expect(await readFile(tokenFile, "utf8")).toContain(first.setupToken);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

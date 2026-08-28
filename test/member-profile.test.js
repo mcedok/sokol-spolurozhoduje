@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createElement } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -148,6 +148,7 @@ function pageController(currentUser, view = "landing") {
       },
       actions: {
         setFilter: vi.fn(),
+        loadDetail: vi.fn().mockResolvedValue(pageNorm),
         requireLogin: vi.fn(),
         showParticipationUnavailable: vi.fn(),
         downloadDocument: vi.fn(),
@@ -230,6 +231,29 @@ describe("page-level role navigation", () => {
     expect(resetDemoData).toHaveBeenCalledOnce();
   });
 
+  it("při selhání inicializace zablokuje přihlášení a nabídne opakování načtení", async () => {
+    const browserUser = userEvent.setup();
+    const openLogin = vi.fn();
+    const retryInitialization = vi.fn();
+    controller.current = {
+      ...pageController(null),
+      initializationFailed: true,
+      feedback: null,
+      actions: {
+        ...pageController(null).actions,
+        ready: false,
+        openLogin,
+        retryInitialization,
+      },
+    };
+    render(createElement(Home));
+
+    expect(screen.getByRole("button", { name: "Přihlásit" })).toBeDisabled();
+    await browserUser.click(screen.getByRole("button", { name: "Zkusit znovu" }));
+    expect(retryInitialization).toHaveBeenCalledOnce();
+    expect(openLogin).not.toHaveBeenCalled();
+  });
+
   it("otevře ověřenému členovi formulář bez editovatelných polí autora a jednoty", async () => {
     const browserUser = userEvent.setup();
     controller.current = pageController(user, "detail");
@@ -250,6 +274,70 @@ describe("page-level role navigation", () => {
     await browserUser.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Nový návrh změny" })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it("načte serverový detail, sváže návrh se stabilním blokem a pošle verzi účasti", async () => {
+    const browserUser = userEvent.setup();
+    const block = {
+      blockUid: "0198f413-2a36-7000-8000-000000000010",
+      blockRevisionId: "0198f413-2a36-7000-8000-000000000011",
+      type: "paragraph",
+      order: 0,
+      commentable: true,
+      text: "Převedený článek normy",
+      structuredContent: { runs: [{ text: "Převedený článek normy" }] },
+    };
+    const detail = { ...pageNorm, content: [block], participationVersion: 7 };
+    const loadDetail = vi.fn().mockResolvedValue(detail);
+    const addContribution = vi.fn().mockResolvedValue({ comment: { publicId: "PRIP-2026-000001" } });
+    controller.current = pageController(user, "detail");
+    controller.current.normCatalog.actions.loadDetail = loadDetail;
+    controller.current.normCatalog.actions.addContribution = addContribution;
+    render(createElement(Home));
+
+    expect(await screen.findByText("Převedený článek normy")).toBeInTheDocument();
+    expect(loadDetail).toHaveBeenCalledWith(pageNorm.number);
+    await browserUser.click(screen.getByRole("button", { name: "Navrhnout změnu k bloku 1" }));
+    const dialog = screen.getByRole("dialog", { name: "Nový návrh změny" });
+    expect(within(dialog).getByText(/^Blok 1:/)).toBeInTheDocument();
+    await browserUser.type(within(dialog).getByRole("textbox", { name: "Název" }), "Upřesnit článek");
+    await browserUser.type(within(dialog).getByRole("textbox", { name: "Navrhované znění a odůvodnění" }), "Nové znění");
+    await browserUser.click(within(dialog).getByRole("button", { name: "Zveřejnit" }));
+
+    await waitFor(() => expect(addContribution).toHaveBeenCalledWith(pageNorm.number, {
+      blockUid: block.blockUid,
+      kind: "Návrh úpravy",
+      text: "Upřesnit článek\n\nNové znění",
+      priority: "normal",
+      participationVersion: 7,
+    }));
+  });
+
+  it("po přidání obecného příspěvku obnoví detail i v browserové demoverzi", async () => {
+    const browserUser = userEvent.setup();
+    const published = {
+      ...pageNorm,
+      submissions: [{
+        id: "submission-new", kind: "Komentář", section: "Obecně",
+        title: "Nově zveřejněný komentář", text: "Text komentáře",
+        author: "Jana Nováková", unit: "TJ Sokol Brno I", createdAt: "2026-08-28",
+        score: 0, resolutionStatus: "Nevypořádáno", replies: [],
+      }],
+    };
+    controller.current = pageController(user, "detail");
+    controller.current.normCatalog.actions.loadDetail = vi.fn()
+      .mockResolvedValueOnce(pageNorm)
+      .mockResolvedValueOnce(published);
+    controller.current.normCatalog.actions.addContribution = vi.fn().mockResolvedValue({ contribution: published.submissions[0] });
+    render(createElement(Home));
+
+    await browserUser.click(screen.getByRole("button", { name: "Komentář" }));
+    const dialog = screen.getByRole("dialog", { name: "Nový komentář" });
+    await browserUser.type(within(dialog).getByRole("textbox", { name: "Název" }), "Nově zveřejněný komentář");
+    await browserUser.type(within(dialog).getByRole("textbox", { name: "Komentář" }), "Text komentáře");
+    await browserUser.click(within(dialog).getByRole("button", { name: "Zveřejnit" }));
+
+    expect(await screen.findByRole("heading", { name: "Nově zveřejněný komentář" })).toBeInTheDocument();
   });
 
   it("označí dialog nové normy a po zavření vrátí focus na jeho spouštěč", async () => {

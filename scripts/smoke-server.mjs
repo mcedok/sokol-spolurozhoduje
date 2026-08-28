@@ -71,7 +71,7 @@ async function seedAdmin({ email, role, password }) {
       user_id, password_hash, totp_secret_ciphertext, totp_enabled_at
     ) values (${user.id}, ${await hash(password)}, ${encryptTotp(secret)}, now())
   `;
-  return { ...user, email, password, secret };
+  return { ...user, email, role, password, secret };
 }
 
 async function resetAndSeed() {
@@ -168,6 +168,11 @@ async function adminLogin(account) {
   const password = await expectStatus(await request("/api/auth/admin/password", {
     method: "POST", body: { email: account.email, password: account.password },
   }), 200, `heslo ${account.email}`);
+  if (account.role === "admin") {
+    check(Boolean(password.cookie), `session cookie ${account.email}`);
+    check(Boolean(password.data.csrfToken), `CSRF token ${account.email}`);
+    return { cookie: password.cookie, csrf: password.data.csrfToken, user: password.data.user };
+  }
   const mfa = await expectStatus(await request("/api/auth/admin/mfa", {
     method: "POST",
     body: { loginAttemptId: password.data.loginAttemptId, token: generateSync({ secret: account.secret }) },
@@ -295,19 +300,10 @@ async function run() {
   const setup = await expectStatus(await request("/api/auth/admin/setup", {
     method: "POST", body: { token: invite.payload.setupToken, password: "Smoke-Admin-2!" },
   }), 200, "první heslo administrátora");
-  const enroll = await expectStatus(await request("/api/auth/admin/mfa/enroll", {
-    method: "POST", body: { setupAttemptId: setup.data.setupAttemptId },
-  }), 200, "zahájení MFA administrátora");
-  const enrolledSecret = new URL(enroll.data.otpauthUri).searchParams.get("secret");
-  check(Boolean(enrolledSecret), "MFA enrollment obsahuje tajemství pro autentikátor");
-  const adminLoginResult = await expectStatus(await request("/api/auth/admin/mfa/confirm", {
-    method: "POST",
-    body: { setupAttemptId: setup.data.setupAttemptId, token: generateSync({ secret: enrolledSecret }) },
-  }), 200, "potvrzení MFA administrátora");
-  const admin = {
-    cookie: adminLoginResult.cookie,
-    csrf: adminLoginResult.data.csrfToken,
-  };
+  check(setup.data.kind === "password_ready", "běžný administrátor po nastavení hesla nevyžaduje MFA");
+  const admin = await adminLogin({
+    email: "admin.smoke@example.cz", password: "Smoke-Admin-2!", role: "admin",
+  });
 
   const documentKey = randomUUID();
   const documentInput = {
@@ -366,13 +362,8 @@ async function run() {
       ${adminUserId}, now()
     )
   `;
-  const [{ id: memberUserId }] = await sql`
-    select id from users where email='clen.smoke@example.cz'
-  `;
   const blockUid = randomUUID();
   const blockRevisionId = randomUUID();
-  const threadId = randomUUID();
-  const commentId = randomUUID();
   await sql`insert into document_blocks (block_uid, document_id) values (${blockUid}, ${currentDocument.id})`;
   await sql`
     insert into block_revisions (
@@ -383,22 +374,37 @@ async function run() {
       'Smoke blok', ${"a".repeat(64)}, 'smoke', 'converted'
     )
   `;
-  await sql`
-    insert into comment_threads (
-      id, public_id, document_id, block_uid, target_block_revision_id, created_by_user_id
-    ) values (
-      ${threadId}, 'VLAK-2026-990001', ${currentDocument.id}, ${blockUid},
-      ${blockRevisionId}, ${memberUserId}
-    )
-  `;
-  await sql`
-    insert into comments (
-      id, public_id, thread_id, author_user_id, author_name_snapshot,
-      organization_name_snapshot, body, comment_type, priority, status
-    ) values (
-      ${commentId}, 'PRIP-2026-990001', ${threadId}, ${memberUserId},
-      'Jan Člen', 'TJ Sokol Smoke', 'Smoke připomínka', 'comment', 'normal', 'open'
-    )
+  const renewedMemberCsrf = await expectStatus(await request("/api/auth/session/csrf", {
+    method: "POST", cookie: memberLogin.cookie,
+  }), 200, "obnova CSRF po simulovaném reloadu člena");
+  const publicDetail = await expectStatus(await request(
+    `/api/public/documents/${currentDocument.publicId}`, { cookie: memberLogin.cookie },
+  ), 200, "veřejný detail s převedeným blokem");
+  check(publicDetail.data.document.version.blocks.some((block) => block.blockUid === blockUid),
+    "veřejný detail obsahuje stabilní komentovatelný blok");
+  const createdComment = await expectStatus(await request(
+    `/api/public/documents/${currentDocument.publicId}/blocks/${blockUid}/comments`, {
+      method: "POST", cookie: memberLogin.cookie, csrf: renewedMemberCsrf.data.csrfToken,
+      idempotencyKey: randomUUID(), version: publicDetail.data.document.participationVersion,
+      body: { type: "proposal", text: "Smoke připomínka", priority: "normal" },
+    },
+  ), 201, "bloková připomínka po reloadu relace");
+  const votedComment = await expectStatus(await request(
+    `/api/public/comments/${createdComment.data.comment.publicId}/vote`, {
+      method: "PUT", cookie: memberLogin.cookie, csrf: renewedMemberCsrf.data.csrfToken,
+      idempotencyKey: randomUUID(), version: createdComment.data.participationVersion,
+      body: { value: 1, commentRowVersion: createdComment.data.comment.rowVersion },
+    },
+  ), 200, "hlas pro blokovou připomínku");
+  await expectStatus(await request(
+    `/api/public/documents/${currentDocument.publicId}/need-vote`, {
+      method: "PUT", cookie: memberLogin.cookie, csrf: renewedMemberCsrf.data.csrfToken,
+      idempotencyKey: randomUUID(), version: votedComment.data.participationVersion,
+      body: { value: "yes" },
+    },
+  ), 200, "hlas o potřebnosti dokumentu");
+  const [{ id: commentId }] = await sql`
+    select id from comments where public_id=${createdComment.data.comment.publicId}
   `;
 
   workerContainer = spawn(docker, [

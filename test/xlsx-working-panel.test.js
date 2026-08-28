@@ -10,6 +10,18 @@ describe("XlsxWorkingPanel", () => {
     expect(screen.queryByRole("heading", { name: "Pracovní XLSX" })).not.toBeInTheDocument();
   });
 
+  it("does not report a queued export when the XLSX API is not connected", async () => {
+    const user = userEvent.setup();
+    render(h(XlsxWorkingPanel, {
+      document: { id: "doc-1", latestReadyVersionId: "version-1" }, api: {}, canManage: true,
+    }));
+
+    await user.click(screen.getByRole("button", { name: "Vytvořit XLSX" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("XLSX export není v tomto prostředí dostupný");
+    expect(screen.queryByText("Export byl zařazen ke zpracování.")).not.toBeInTheDocument();
+  });
+
   it("covers export, accessible upload, server-applied safe phase and an explicit conflict decision", async () => {
     const user = userEvent.setup();
     const api = {

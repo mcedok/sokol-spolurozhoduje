@@ -16,6 +16,7 @@ import { createVersioningService } from "./modules/versioning/versioning-service
 import { createExportService } from "./modules/exports/export-service";
 import { createXlsxExportService } from "./modules/xlsx/xlsx-export-service";
 import { createXlsxImportService } from "./modules/xlsx/xlsx-import-service";
+import { createCommentService } from "./modules/comments/comment-service";
 
 export interface IdentityRuntime {
   sql: Sql;
@@ -32,6 +33,7 @@ export interface IdentityRuntime {
   exports: ReturnType<typeof createExportService>;
   xlsxExports: ReturnType<typeof createXlsxExportService>;
   xlsxImports: ReturnType<typeof createXlsxImportService>;
+  comments: ReturnType<typeof createCommentService>;
 }
 
 let identityRuntime: IdentityRuntime | undefined;
@@ -66,6 +68,7 @@ export function getIdentityRuntime(): IdentityRuntime {
     exports: createExportService({ sql }),
     xlsxExports: createXlsxExportService({ sql }),
     xlsxImports: createXlsxImportService({ sql }),
+    comments: createCommentService({ sql }),
   };
   return identityRuntime;
 }

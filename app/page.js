@@ -1,6 +1,6 @@
 "use client";
 import { jsxs, jsx } from "react/jsx-runtime";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NormAdministration } from "./components/admin/NormAdministration.js";
 import {
   canAccessUserAdministration,
@@ -35,6 +35,7 @@ function Home() {
     view,
     actions,
     feedback,
+    initializationFailed,
     authMode,
     authDelivery,
     services,
@@ -46,6 +47,8 @@ function Home() {
   const [selectedId, setSelectedId] = useState(initialNormId);
   const [adminId, setAdminId] = useState(initialNormId);
   const [submissionMode, setSubmissionMode] = useState(null);
+  const [detailNorm, setDetailNorm] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const submissionReturnFocusRef = useRef(null);
   const createReturnFocusRef = useRef(null);
@@ -57,11 +60,30 @@ function Home() {
     () => normAdministration.norms.find((norm) => norm.id === adminId) || normAdministration.norms[0],
     [adminId, normAdministration.norms]
   );
+  useEffect(() => {
+    if (
+      view !== "detail" || !selectedNorm?.number || !normCatalog.actions.loadDetail
+      || (selectedNorm.visibilityMode === "title-only" && !currentUser)
+    ) return undefined;
+    let active = true;
+    setDetailLoading(true);
+    void normCatalog.actions.loadDetail(selectedNorm.number).then((loaded) => {
+      if (active && loaded) setDetailNorm(loaded);
+    }).catch((error) => {
+      if (active) actions.flash?.(error?.message || "Detail normy se nepodařilo načíst.", "error");
+    }).finally(() => {
+      if (active) setDetailLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [actions, currentUser?.id, normCatalog.actions, selectedNorm?.number, view]);
   function scrollToTop() {
     window.scrollTo?.({ top: 0, behavior: "smooth" });
   }
   function openNorm(id) {
     if (id) setSelectedId(id);
+    setDetailNorm(null);
     actions.setView("detail");
     scrollToTop();
   }
@@ -74,9 +96,9 @@ function Home() {
     actions.setView("admin");
     scrollToTop();
   }
-  function openContribution(mode) {
+  function openContribution(mode, block = null) {
     submissionReturnFocusRef.current = document.activeElement;
-    setSubmissionMode(mode);
+    setSubmissionMode({ mode, block });
   }
   function closeContribution() {
     setSubmissionMode(null);
@@ -93,12 +115,30 @@ function Home() {
   async function submitContribution(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const result = await normCatalog.actions.addContribution(selectedNorm.id, {
-      kind: submissionMode === "proposal" ? "N\xE1vrh \xFApravy" : "Koment\xE1\u0159",
-      section: String(form.get("section") || "").trim() || "Obecn\u011B",
-      title: String(form.get("title") || "").trim(),
-      text: String(form.get("text") || "").trim()
-    });
+    const activeNorm = detailNorm || selectedNorm;
+    const title = String(form.get("title") || "").trim();
+    const text = String(form.get("text") || "").trim();
+    const targetBlock = submissionMode.block;
+    const input = targetBlock ? {
+      blockUid: targetBlock.blockUid,
+      kind: submissionMode.mode === "proposal" ? "Návrh úpravy" : "Komentář",
+      text: title ? `${title}\n\n${text}` : text,
+      priority: "normal",
+      participationVersion: activeNorm.participationVersion
+    } : {
+      kind: submissionMode.mode === "proposal" ? "Návrh úpravy" : "Komentář",
+      section: String(form.get("section") || "").trim() || "Obecně",
+      title,
+      text
+    };
+    const result = await normCatalog.actions.addContribution(
+      targetBlock ? activeNorm.number : selectedNorm.id,
+      input
+    );
+    if (result) {
+      const loaded = await normCatalog.actions.loadDetail?.(activeNorm.number);
+      if (loaded) setDetailNorm(loaded);
+    }
     if (result) closeContribution();
   }
   async function createNorm(event) {
@@ -128,11 +168,29 @@ function Home() {
     setAdminId(fallback?.id || "");
     setSelectedId(fallback?.id || "");
   }
+  async function runAndReload(operation) {
+    const result = await operation();
+    const activeNorm = detailNorm || selectedNorm;
+    if (result && activeNorm?.number && normCatalog.actions.loadDetail) {
+      const loaded = await normCatalog.actions.loadDetail(activeNorm.number);
+      if (loaded) setDetailNorm(loaded);
+    }
+    return result;
+  }
   const detailActions = {
     ...normCatalog.actions,
     onBack: () => actions.setView("landing"),
     manage: openAdmin,
-    openContribution
+    openContribution,
+    addReply: (publicId, ...args) => runAndReload(() => normCatalog.actions.addReply(
+      services?.backend === "server" ? publicId : selectedNorm.id, ...args,
+    )),
+    voteSubmission: (publicId, ...args) => runAndReload(() => normCatalog.actions.voteSubmission(
+      services?.backend === "server" ? publicId : selectedNorm.id, ...args,
+    )),
+    voteNeed: (publicId, ...args) => runAndReload(() => normCatalog.actions.voteNeed(
+      services?.backend === "server" ? publicId : selectedNorm.id, ...args,
+    ))
   };
   const administrationActions = {
     ...normCatalog.actions,
@@ -152,6 +210,10 @@ function Home() {
     ] }) });
   }
   const canAdministerNorms = canCreateNorm(currentUser);
+  const visibleFeedback = feedback || (initializationFailed ? {
+    kind: "error",
+    message: "Aplikaci se nepodařilo načíst. Zkuste načtení zopakovat."
+  } : null);
   return /* @__PURE__ */ jsxs("main", { children: [
     /* @__PURE__ */ jsxs("header", { className: "topbar", children: [
       /* @__PURE__ */ jsxs("button", { className: "brand", onClick: () => actions.setView("landing"), children: [
@@ -171,6 +233,7 @@ function Home() {
         UserMenu,
         {
           currentUser,
+          loginDisabled: !actions.ready,
           onLogin: () => actions.openLogin(),
           onProfile: () => actions.setView("profile"),
           onLogout: actions.logout
@@ -189,17 +252,19 @@ function Home() {
     view === "detail" && /* @__PURE__ */ jsx(
       NormDetail,
       {
-        norm: selectedNorm,
+        norm: detailNorm || selectedNorm,
         currentUser,
         permissions: {
           canParticipate: normCatalog.permissions.canParticipate,
-          canManage: normCatalog.permissions.canManageNorm(selectedNorm),
-          needVote: normCatalog.permissions.needVote?.(selectedNorm),
-          submissionVote: (submissionId) => normCatalog.permissions.submissionVote?.(selectedNorm, submissionId) || 0
+          canManage: normCatalog.permissions.canManageNorm(detailNorm || selectedNorm),
+          needVote: detailNorm?.needVotes?.currentUserVote || normCatalog.permissions.needVote?.(selectedNorm),
+          submissionVote: (submissionId) => detailNorm?.submissions?.find((item) => item.id === submissionId)?.currentUserVote
+            || normCatalog.permissions.submissionVote?.(selectedNorm, submissionId) || 0
         },
         actions: detailActions
       }
     ),
+    view === "detail" && detailLoading && /* @__PURE__ */ jsx("p", { className: "detailLoading", role: "status", children: "Načítám převedený dokument…" }),
     view === "admin" && (canAdministerNorms ? /* @__PURE__ */ jsx(
       NormAdministration,
       {
@@ -236,19 +301,26 @@ function Home() {
     ),
     submissionMode && selectedNorm && /* @__PURE__ */ jsx("div", { className: "modalBackdrop", onMouseDown: closeContribution, children: /* @__PURE__ */ jsxs("form", { ref: contributionDialogRef, className: "modal", role: "dialog", "aria-modal": "true", "aria-labelledby": "contribution-dialog-title", onSubmit: submitContribution, onMouseDown: (event) => event.stopPropagation(), children: [
       /* @__PURE__ */ jsx("button", { type: "button", className: "modalClose", "aria-label": "Zavřít", onClick: closeContribution, children: "\xD7" }),
-      /* @__PURE__ */ jsx("p", { className: "kicker", children: selectedNorm.number }),
-      /* @__PURE__ */ jsx("h2", { id: "contribution-dialog-title", children: submissionMode === "proposal" ? "Nov\xFD n\xE1vrh zm\u011Bny" : "Nov\xFD koment\xE1\u0159" }),
+      /* @__PURE__ */ jsx("p", { className: "kicker", children: (detailNorm || selectedNorm).number }),
+      /* @__PURE__ */ jsx("h2", { id: "contribution-dialog-title", children: submissionMode.mode === "proposal" ? "Nov\xFD n\xE1vrh zm\u011Bny" : "Nov\xFD koment\xE1\u0159" }),
       /* @__PURE__ */ jsx("p", { children: "Jm\xE9no a jednota se bezpe\u010Dn\u011B p\u0159evezmou z p\u0159ihl\xE1\u0161en\xE9ho \xFA\u010Dtu." }),
-      /* @__PURE__ */ jsxs("label", { children: [
-        "\u010C\xE1st dokumentu",
-        /* @__PURE__ */ jsx("input", { name: "section", placeholder: "nap\u0159. \xA7 4 odst. 2", autoFocus: true })
-      ] }),
+      submissionMode.block
+        ? /* @__PURE__ */ jsxs("p", { className: "selectedBlock", children: [
+          "Blok ",
+          ((detailNorm || selectedNorm).content || []).findIndex((block) => block.blockUid === submissionMode.block.blockUid) + 1,
+          ": ",
+          submissionMode.block.text
+        ] })
+        : /* @__PURE__ */ jsxs("label", { children: [
+          "\u010C\xE1st dokumentu",
+          /* @__PURE__ */ jsx("input", { name: "section", placeholder: "nap\u0159. \xA7 4 odst. 2", autoFocus: true })
+        ] }),
       /* @__PURE__ */ jsxs("label", { children: [
         "N\xE1zev",
         /* @__PURE__ */ jsx("input", { name: "title", required: true, placeholder: "Stru\u010Dn\xE9 pojmenov\xE1n\xED podn\u011Btu" })
       ] }),
       /* @__PURE__ */ jsxs("label", { children: [
-        submissionMode === "proposal" ? "Navrhovan\xE9 zn\u011Bn\xED a od\u016Fvodn\u011Bn\xED" : "Koment\xE1\u0159",
+        submissionMode.mode === "proposal" ? "Navrhovan\xE9 zn\u011Bn\xED a od\u016Fvodn\u011Bn\xED" : "Koment\xE1\u0159",
         /* @__PURE__ */ jsx("textarea", { name: "text", required: true })
       ] }),
       /* @__PURE__ */ jsxs("div", { className: "modalActions", children: [
@@ -298,8 +370,8 @@ function Home() {
           /* @__PURE__ */ jsx("textarea", { name: "reason", required: true })
         ] }),
         /* @__PURE__ */ jsxs("label", { className: "fileField wide", children: [
-          /* @__PURE__ */ jsx("span", { children: "P\u0159ilo\u017Eit dokument (max. 15 MB)" }),
-          /* @__PURE__ */ jsx("input", { name: "file", type: "file", accept: ".pdf,.docx,.odt" })
+          /* @__PURE__ */ jsx("span", { children: "P\u0159ilo\u017Eit dokument DOCX (max. 15 MB)" }),
+          /* @__PURE__ */ jsx("input", { name: "file", type: "file", accept: ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" })
         ] })
       ] }),
       /* @__PURE__ */ jsxs("div", { className: "modalActions", children: [
@@ -317,7 +389,11 @@ function Home() {
         onClose: actions.closeLogin
       }
     ),
-    /* @__PURE__ */ jsx(Feedback, { feedback })
+    /* @__PURE__ */ jsx(Feedback, {
+      feedback: visibleFeedback,
+      actionLabel: initializationFailed ? "Zkusit znovu" : void 0,
+      onAction: initializationFailed ? actions.retryInitialization : void 0
+    })
   ] });
 }
 export {

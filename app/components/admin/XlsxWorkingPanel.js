@@ -75,7 +75,10 @@ export function XlsxWorkingPanel({ document, api = {}, canManage = false }) {
   async function createExport() {
     setBusy(true); setMessage(""); setDownloadUrl(""); setBatch(null); setRows([]); setInvalidRows([]);
     try {
-      const value = await api.createXlsxExport?.(document.id, document.latestReadyVersionId);
+      if (typeof api.createXlsxExport !== "function") {
+        throw new Error("XLSX export není v tomto prostředí dostupný.");
+      }
+      const value = await api.createXlsxExport(document.id, document.latestReadyVersionId);
       setJob(value?.job || value || null); setMessage("Export byl zařazen ke zpracování.");
     } catch (error) { setMessage(error?.message || "Export se nepodařilo založit."); }
     finally { setBusy(false); }
@@ -158,7 +161,7 @@ export function XlsxWorkingPanel({ document, api = {}, canManage = false }) {
         accept: ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         onChange: upload, disabled: busy || !job?.id }),
     ),
-    h("p", { role: message.toLowerCase().includes("nepodařilo") ? "alert" : "status", "aria-live": "polite" }, message),
+    h("p", { role: /nepodařilo|není .* dostup/i.test(message) ? "alert" : "status", "aria-live": "polite" }, message),
     job && h("p", null, `Export: ${job.status}`),
     batch && h("div", { className: "xlsxImportSummary" },
       h("strong", null, `Import: ${IMPORT_LABEL[batch.status] || batch.status}`),

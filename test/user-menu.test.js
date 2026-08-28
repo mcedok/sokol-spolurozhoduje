@@ -60,7 +60,7 @@ describe("useAppController", () => {
     });
     expect(opened).toBe(false);
     expect(result.current.authMode).toBeNull();
-    expect(result.current.feedback.message).toMatch(/načtěte stránku znovu/i);
+    expect(result.current.feedback.message).toMatch(/zkuste načtení zopakovat/i);
   });
 
   it("removes an invalid persisted session and initializes exact demo accounts", async () => {

@@ -1,5 +1,9 @@
 # Lokální serverová verze
 
+Pro opakovatelný akceptační pilot se samostatnými daty použijte návod
+`docs/operations/local-pilot.md`. Níže uvedený ruční postup nad `sokol_test`
+slouží vývojářům a automatickým testům; testovací databáze se může mazat.
+
 ## Požadavky
 
 - Docker Desktop se spuštěným linuxovým enginem,

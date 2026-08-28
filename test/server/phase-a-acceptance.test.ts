@@ -57,6 +57,7 @@ it("completes the approved phase A lifecycle", async () => {
     seededSuperadmin.user.email,
     seededSuperadmin.password,
   );
+  if (!("loginAttemptId" in pendingSuperadmin)) throw new Error("MFA challenge expected");
   const superadminSession = await auth.verifyAdminMfa(
     pendingSuperadmin.loginAttemptId,
     totp.generate(seededSuperadmin.mfaSecret),
@@ -76,11 +77,9 @@ it("completes the approved phase A lifecycle", async () => {
     select payload from outbox_events where idempotency_key = ${adminInviteKey}
   `;
   const setup = await auth.completeAdminSetup(inviteEvent.payload.setupToken, "Admin-Horse-2!");
-  const enrollment = await auth.beginMfaEnrollment(setup.setupAttemptId);
-  const adminSession = await auth.confirmMfaEnrollment(
-    setup.setupAttemptId,
-    totp.generate(enrollment.testOnlySecret!),
-  );
+  expect(setup).toEqual({ kind: "password_ready" });
+  const adminSession = await auth.verifyAdminPassword("predkladatel@example.cz", "Admin-Horse-2!");
+  if ("kind" in adminSession) throw new Error("Direct administrator session expected");
   const admin = actorFrom(adminSession);
   expect(admin.userId).toBe(invited.id);
 

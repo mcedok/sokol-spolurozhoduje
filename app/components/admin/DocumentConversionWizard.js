@@ -16,6 +16,8 @@ export function DocumentConversionWizard({ document, api, onReady }) {
   const [referenceUrl, setReferenceUrl] = useState(null);
   const [error, setError] = useState("");
   const [mappingAvailable, setMappingAvailable] = useState(false);
+  const [completionState, setCompletionState] = useState("idle");
+  const [completionError, setCompletionError] = useState("");
 
   const refreshPreview = useCallback(async () => {
     if (!versionId) return null;
@@ -71,6 +73,7 @@ export function DocumentConversionWizard({ document, api, onReady }) {
       return;
     }
     setError(""); setPreview(null); setEditingBlock(null);
+    setCompletionState("idle"); setCompletionError("");
     setProcessing({ jobStatus: "scanning", versionStatus: "file_check", step: "file_check", attemptCount: 1 });
     try {
       const accepted = await api.uploadDocumentVersion(document.id, file, { rowVersion: document.rowVersion, idempotencyKey: crypto.randomUUID() });
@@ -90,8 +93,17 @@ export function DocumentConversionWizard({ document, api, onReady }) {
   }
 
   const blockers = useMemo(() => (preview?.findings || []).filter((finding) => finding.severity === "blocking" && finding.status === "open"), [preview]);
+  const unconfirmedTables = useMemo(() => (preview?.blocks || []).filter(
+    (block) => block.type === "table" && !block.tableRepresentation,
+  ), [preview]);
   async function complete() {
-    setError("");
+    setCompletionError("");
+    if (unconfirmedTables.length > 0) {
+      reviewTable(unconfirmedTables[0]);
+      setCompletionError("Nejprve potvrďte způsob zobrazení zvýrazněné tabulky. Potom náhled potvrďte znovu.");
+      return;
+    }
+    setCompletionState("pending");
     try {
       const result = await api.completeConversionReview(preview.id, { rowVersion: preview.rowVersion, idempotencyKey: crypto.randomUUID() });
       setProcessing((current) => ({ ...current, versionStatus: result.status }));
@@ -99,10 +111,17 @@ export function DocumentConversionWizard({ document, api, onReady }) {
         idempotencyKey: crypto.randomUUID(),
       });
       setMappingAvailable(Boolean(mappings));
+      setCompletionState("success");
       await onReady?.();
     } catch (caught) {
-      setError(caught.message || "Kontrolu se nepodařilo dokončit.");
+      setCompletionState("idle");
+      setCompletionError(caught.message || "Kontrolu se nepodařilo dokončit.");
     }
+  }
+
+  function reviewTable(block) {
+    setEditingBlock(block);
+    setActiveBlockUid(block.blockUid);
   }
 
   return h("section", { className: "documentConversionWizard", "aria-labelledby": `conversion-title-${document.id}` },
@@ -123,11 +142,31 @@ export function DocumentConversionWizard({ document, api, onReady }) {
         onConflict: refreshPreview,
         onClose: () => setEditingBlock(null),
       }),
-      h("section", { className: "conversionSummary" },
-        h("h4", null, "Souhrn kontroly"),
+      h("section", { className: "conversionSummary", "aria-labelledby": `conversion-summary-${preview.id}` },
+        h("h4", { id: `conversion-summary-${preview.id}` }, "Souhrn kontroly"),
         h("p", null, `${preview.blocks.length} bloků · ${preview.blocks.filter((block) => block.type === "table").length} tabulek · ${(preview.findings || []).length} nálezů`),
         blockers.length > 0 && h("p", null, `Zbývá vyřešit ${blockers.length} blokujících nálezů.`),
-        h("button", { type: "button", className: "primaryButton", disabled: blockers.length > 0, onClick: complete }, "Potvrdit náhled"),
+        unconfirmedTables.length > 0 && h("p", null,
+          unconfirmedTables.length === 1
+            ? "1 tabulka čeká na potvrzení způsobu zobrazení."
+            : `${unconfirmedTables.length} tabulky čekají na potvrzení způsobu zobrazení.`,
+        ),
+        unconfirmedTables.length > 0 && h("button", {
+          type: "button",
+          onClick: () => reviewTable(unconfirmedTables[0]),
+        }, "Zkontrolovat tabulku"),
+        completionError && h("p", { role: "alert", className: "formError" }, completionError),
+        completionState === "success" && h("p", {
+          role: "status",
+          "aria-label": "Výsledek potvrzení náhledu",
+          className: "conversionOk",
+        }, "Náhled byl potvrzen. Dokument je připraven k navazujícímu kroku."),
+        h("button", {
+          type: "button",
+          className: "primaryButton",
+          disabled: blockers.length > 0 || completionState === "pending" || completionState === "success",
+          onClick: complete,
+        }, completionState === "pending" ? "Potvrzuji…" : "Potvrdit náhled"),
       ),
     ),
     mappingAvailable && h(VersionMappingReview, {

@@ -30,8 +30,9 @@ async function seedAdminWithCredentials(input: {
   status?: "active" | "invited" | "blocked";
   password?: string;
   mfa?: boolean;
+  role?: "admin" | "superadmin";
 } = {}) {
-  const admin = await seedActiveAdmin();
+  const admin = await seedActiveAdmin({ role: input.role });
   const status = input.status ?? "active";
   await testSql`update users set status = ${status} where id = ${admin.id}`;
   const passwordHash = await secrets.hashPassword(input.password ?? "Correct-Horse-1!");
@@ -74,9 +75,21 @@ describe("production authentication workflows", () => {
     expect(known.publicResult).toEqual(unknown.publicResult);
   });
 
-  it("requires password and TOTP before creating an admin session", async () => {
-    const admin = await seedAdminWithCredentials();
+  it("creates an ordinary administrator session immediately after a valid password", async () => {
+    const admin = await seedAdminWithCredentials({ mfa: false });
+
+    const session = await auth.verifyAdminPassword(admin.email, "Correct-Horse-1!");
+
+    if ("kind" in session) throw new Error("Direct administrator session expected");
+    expect(session).toMatchObject({ user: { role: "admin" } });
+    expect(await auth.resolveSession(session.token)).toMatchObject({ role: "admin" });
+    expect(await testSql`select * from login_challenges where kind='admin_mfa'`).toHaveLength(0);
+  });
+
+  it("requires password and TOTP before creating a superadministrator session", async () => {
+    const admin = await seedAdminWithCredentials({ role: "superadmin" });
     const pending = await auth.verifyAdminPassword(admin.email, "Correct-Horse-1!");
+    if (!("loginAttemptId" in pending)) throw new Error("MFA challenge expected");
     expect(pending.kind).toBe("mfa_required");
     await expect(auth.resolveSession(pending.loginAttemptId)).rejects.toMatchObject({
       code: "UNAUTHENTICATED",
@@ -85,7 +98,7 @@ describe("production authentication workflows", () => {
       pending.loginAttemptId,
       totp.generate(admin.mfaSecret),
     );
-    expect(session.user.role).toBe("admin");
+    expect(session.user.role).toBe("superadmin");
   });
 
   it("locks member challenge after fifth invalid code", async () => {
@@ -188,7 +201,7 @@ describe("production authentication workflows", () => {
     expect(await internal.text()).not.toMatch(/secret-password|stack/i);
   });
 
-  it("activates an invited admin only after password setup and confirmed MFA", async () => {
+  it("activates an invited ordinary administrator immediately after password setup", async () => {
     const admin = await seedAdminWithCredentials({ status: "invited", mfa: false });
     const setupToken = secrets.newSessionToken();
     await testSql`
@@ -199,18 +212,44 @@ describe("production authentication workflows", () => {
       )
     `;
     const setup = await auth.completeAdminSetup(setupToken, "Correct-Horse-1!");
+    expect(setup).toEqual({ kind: "password_ready" });
+    expect(await testSql`select status from users where id=${admin.id}`)
+      .toEqual([{ status: "active" }]);
+    await expect(auth.verifyAdminPassword(admin.email, "Correct-Horse-1!"))
+      .resolves.toMatchObject({ user: { role: "admin" } });
+  });
+
+  it("activates an invited superadministrator only after password setup and confirmed MFA", async () => {
+    const admin = await seedAdminWithCredentials({
+      status: "invited",
+      mfa: false,
+      role: "superadmin",
+    });
+    const setupToken = secrets.newSessionToken();
+    await testSql`
+      insert into login_challenges (user_id, kind, secret_hash, expires_at)
+      values (
+        ${admin.id}, 'set_password', ${secrets.hashSessionToken(setupToken)},
+        now() + interval '30 minutes'
+      )
+    `;
+
+    const setup = await auth.completeAdminSetup(setupToken, "Correct-Horse-1!");
+    expect(setup.kind).toBe("mfa_enrollment_required");
+    if (setup.kind !== "mfa_enrollment_required") throw new Error("MFA setup expected");
     const enrollment = await auth.beginMfaEnrollment(setup.setupAttemptId);
     expect(enrollment.otpauthUri).toMatch(/^otpauth:\/\/totp\//);
     const session = await auth.confirmMfaEnrollment(
       setup.setupAttemptId,
       totp.generate(enrollment.testOnlySecret!),
     );
-    expect(session.user.status).toBe("active");
+    expect(session.user).toMatchObject({ status: "active", role: "superadmin" });
   });
 
   it("consumes a password-reset token once and revokes all existing sessions", async () => {
-    const admin = await seedAdminWithCredentials();
+    const admin = await seedAdminWithCredentials({ role: "superadmin" });
     const pending = await auth.verifyAdminPassword(admin.email, "Correct-Horse-1!");
+    if (!("loginAttemptId" in pending)) throw new Error("MFA challenge expected");
     const oldSession = await auth.verifyAdminMfa(
       pending.loginAttemptId,
       totp.generate(admin.mfaSecret),
